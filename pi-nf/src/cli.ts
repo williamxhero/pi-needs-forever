@@ -38,6 +38,7 @@ async function main(argv: string[]): Promise<number> {
       task: { type: "string" },
       db: { type: "string" },
       model: { type: "string" },
+      "judge-model": { type: "string" },
       message: { type: "string" },
       "request-id": { type: "string" },
       json: { type: "boolean" },
@@ -61,7 +62,12 @@ async function main(argv: string[]): Promise<number> {
     if (!values.message || !values.message.trim()) throw new Error("send requires --message <text>");
     const models = createDefaultModels();
     const model = resolveModelRef(values.model);
-    const host = await Host.openExisting(values.db, { models, model });
+    const judgeModel = values["judge-model"] ? resolveModelRef(values["judge-model"]) : undefined;
+    const host = await Host.openExisting(values.db, {
+      models,
+      model,
+      ...(judgeModel ? { judge_model: judgeModel } : {}),
+    });
     try {
       const receipt = await host.send(values.message, values["request-id"]);
       await host.waitForIdle();
@@ -81,11 +87,13 @@ async function main(argv: string[]): Promise<number> {
     if (!values.db) throw new Error("start requires --db <state.sqlite>");
     const models = createDefaultModels();
     const model = resolveModelRef(values.model);
+    const judgeModel = values["judge-model"] ? resolveModelRef(values["judge-model"]) : undefined;
     const host = await Host.openSqlite({
       db_path: values.db,
       contract_path: values.task,
       models,
       model,
+      ...(judgeModel ? { judge_model: judgeModel } : {}),
     });
     try {
       const receipt = await host.start();

@@ -27,7 +27,7 @@ export type HostOptions = {
   storage: Storage;
   models: Models;
   model: ModelRef;
-  contract: TaskContract | unknown;
+  contract: unknown;
   db_path?: string;
   context?: Context;
   judge?: Judge;
@@ -41,6 +41,7 @@ export type HostSqliteOptions = {
   model?: ModelRef;
   context?: Context;
   judge?: Judge;
+  judge_model?: ModelRef;
   evidence?: EvidenceBuilder;
 };
 
@@ -97,22 +98,27 @@ export class Host {
 
   static async openExisting(
     dbPath: string,
-    options: { models?: Models; model?: ModelRef; judge?: Judge; context?: Context } = {},
+    options: { models?: Models; model?: ModelRef; judge?: Judge; judge_model?: ModelRef; context?: Context } = {},
   ): Promise<Host> {
     const models = options.models ?? createDefaultModels();
     const model = options.model ?? resolveModelRef();
     const contract = await Host.readContract(dbPath);
     const storage = await openNodeSqliteStorage(dbPath);
-    const judge = options.judge ?? new ModelJudge(models, { model });
-    return Host.open({
-      storage,
-      models,
-      model,
-      contract,
-      db_path: dbPath,
-      context: options.context,
-      judge,
-    });
+    const judge = options.judge ?? new ModelJudge(models, { model: options.judge_model ?? model });
+    try {
+      return await Host.open({
+        storage,
+        models,
+        model,
+        contract,
+        db_path: dbPath,
+        context: options.context,
+        judge,
+      });
+    } catch (error) {
+      await storage.close(options.context ?? BACKGROUND_CONTEXT).catch(() => {});
+      throw error;
+    }
   }
 
   static async readContract(dbPath: string, context: Context = BACKGROUND_CONTEXT): Promise<TaskContract> {
@@ -137,16 +143,21 @@ export class Host {
     const model = options.model ?? resolveModelRef();
     const contract = readContractFile(options.contract_path);
     const storage = await openNodeSqliteStorage(options.db_path);
-    const judge = options.judge ?? new ModelJudge(models, { model });
-    return Host.open({
-      storage,
-      models,
-      model,
-      contract,
-      db_path: options.db_path,
-      context: options.context,
-      judge,
-    });
+    const judge = options.judge ?? new ModelJudge(models, { model: options.judge_model ?? model });
+    try {
+      return await Host.open({
+        storage,
+        models,
+        model,
+        contract,
+        db_path: options.db_path,
+        context: options.context,
+        judge,
+      });
+    } catch (error) {
+      await storage.close(options.context ?? BACKGROUND_CONTEXT).catch(() => {});
+      throw error;
+    }
   }
 
   async start(initialMessage?: string): Promise<StartReceipt> {

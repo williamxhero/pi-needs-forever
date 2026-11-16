@@ -15,7 +15,7 @@ It is a standalone host, not a Codex plugin and not a Pi coding-agent extension.
 - `CONTINUE` is delivered as one `nf.direction` entry and one deterministic submission (`requestId`); the decision and submission are committed together.
 - Human input increments an `input_epoch`; a direction that becomes stale during judging is marked superseded and is not delivered.
 - A killed host can reopen the same SQLite database, reclaim a stale lease, resume `nf.judge`, and avoid duplicating a committed direction.
-- `status` is a read-only projection; `send` is a one-shot human input path when no writer holds the lease.
+- `status` is a read-only projection; `send` is a one-shot human input path when no writer holds the lease. `send` rejects DONE and INTERRUPTED until an explicit resume exists.
 
 ## Not in this build
 
@@ -73,7 +73,9 @@ node dist/src/cli.js send --db data/task.sqlite --message "Please continue with 
 
 The default model is `opencode-go/deepseek-v4.1-flash`. The CLI reads
 `OPENCODE_API_KEY` or the `opencode-go` key from `~/.pi/agent/auth.json`. Override
-with `--model provider/modelId`.
+the worker with `--model provider/modelId` and the judge with
+`--judge-model provider/modelId`; the judge may use a different provider or model
+from the worker.
 
 ## Durability model
 

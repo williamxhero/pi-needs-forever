@@ -11,6 +11,7 @@ import { MemoryStorage, ROOT_CONVERSATION_ID, type ModelRef } from "@earendil-wo
 import { Host } from "../src/host.js";
 import { NfControl } from "../src/docs.js";
 import { JudgeUnavailableError, ModelJudge, validateDecision, type Judge } from "../src/judge.js";
+import { NotResumableError } from "../src/types.js";
 import type { EvidenceSnapshot } from "../src/evidence.js";
 
 const MODEL: ModelRef = { provider: "faux", modelId: "faux-model" };
@@ -164,6 +165,7 @@ test("a non-output judge failure moves the task to INTERRUPTED", async () => {
     assert.equal(status.status, "INTERRUPTED");
     const control = await host.harness.snapshot(NfControl, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
     assert.match(control?.last_error ?? "", /provider down/);
+    await assert.rejects(host.send("not until explicitly resumed"), NotResumableError);
   } finally {
     await host.close();
     rmSync(workspace, { recursive: true, force: true });

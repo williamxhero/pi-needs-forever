@@ -29,13 +29,14 @@ export type JudgeInput = {
 
 export type JudgeState =
   | { phase: "snapshot" }
-  | { phase: "judge"; snapshot: EvidenceSnapshot };
+  | { phase: "judge"; snapshot: EvidenceSnapshot; attempt: number };
 
 export type JudgeResult = {
   action: DecisionAction | null;
-  rejected?: boolean;
   interrupted?: boolean;
 };
+
+const MAX_JUDGE_OUTPUT_ATTEMPTS = 3;
 
 export type SupervisionDependencies = {
   judge: Judge;
@@ -43,10 +44,6 @@ export type SupervisionDependencies = {
 };
 
 const now = (): string => new Date().toISOString();
-
-function rejectionResult(): JudgeResult {
-  return { action: null, rejected: true };
-}
 
 export function directionRequestId(taskId: string, taskVersion: number, roundId: string): string {
   return `nf:direction:${taskId}:${taskVersion}:${roundId}`;
@@ -70,16 +67,46 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
         if (contract.task.task_id !== task.input.task_id || contract.contract_sha256 !== task.input.contract_sha256) {
           throw new Error("nf.judge: stale task or contract identity.");
         }
-        const snapshot = await evidence.build({
-          reader: runtime,
-          conversationId: String(runtime.conversationId),
-          task: contract.task,
-          taskVersion: task.input.task_version,
-          roundId: task.input.round_id,
-          run: task.input.run,
-          ...(control ? { control } : {}),
-          context,
-        });
+        let snapshot: EvidenceSnapshot;
+        try {
+          snapshot = await evidence.build({
+            reader: runtime,
+            conversationId: String(runtime.conversationId),
+            task: contract.task,
+            taskVersion: task.input.task_version,
+            roundId: task.input.round_id,
+            run: task.input.run,
+            ...(control ? { control } : {}),
+            context,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          await runtime.commit(async (tx) => {
+            const current = await tx.doc(NfControl, runtime.conversationId);
+            const round = await tx.doc(NfRound, runtime.conversationId);
+            current.status = "INTERRUPTED";
+            current.phase = "IDLE";
+            current.last_error = message;
+            current.updated_at = now();
+            round.round_id = task.input.round_id;
+            round.run = task.input.run;
+            round.status = "interrupted";
+            round.evidence_count = 0;
+            round.updated_at = now();
+            await tx.appendEntry(NfEvent, runtime.conversationId, {
+              data: {
+                type: "nf.snapshot_failed",
+                at: now(),
+                details: { round_id: task.input.round_id, error: message },
+              },
+            });
+            return {
+              status: "terminal",
+              outcome: { status: "completed", result: { action: null, interrupted: true } },
+            };
+          }, context);
+          return;
+        }
         await runtime.commit(async (tx) => {
           const round = await tx.doc(NfRound, runtime.conversationId);
           round.round_id = task.input.round_id;
@@ -102,7 +129,7 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
               },
             },
           });
-          const next: JudgeState = { phase: "judge", snapshot };
+          const next: JudgeState = { phase: "judge", snapshot, attempt: 1 };
           return { status: "running", checkpoint: next };
         }, context);
       },
@@ -114,14 +141,47 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           const rejected = error instanceof JudgeOutputError;
+          const checkpoint = task.state.checkpoint;
           const usage = dependencies.judge.lastUsage;
           const raw = dependencies.judge.lastRawOutput;
+          if (rejected && checkpoint.attempt < MAX_JUDGE_OUTPUT_ATTEMPTS) {
+            await runtime.commit(async (tx) => {
+              const control = await tx.doc(NfControl, runtime.conversationId);
+              const round = await tx.doc(NfRound, runtime.conversationId);
+              control.phase = "JUDGE";
+              control.last_error = message;
+              control.updated_at = now();
+              round.status = "open";
+              round.updated_at = now();
+              await tx.appendEntry(NfEvent, runtime.conversationId, {
+                data: {
+                  type: "nf.judge_retry",
+                  at: now(),
+                  details: {
+                    round_id: task.input.round_id,
+                    attempt: checkpoint.attempt,
+                    next_attempt: checkpoint.attempt + 1,
+                    error: message,
+                  },
+                },
+              });
+              return {
+                status: "running",
+                checkpoint: {
+                  phase: "judge",
+                  snapshot: checkpoint.snapshot,
+                  attempt: checkpoint.attempt + 1,
+                } satisfies JudgeState,
+              };
+            }, context);
+            return;
+          }
           await runtime.commit(async (tx) => {
             const control = await tx.doc(NfControl, runtime.conversationId);
             const round = await tx.doc(NfRound, runtime.conversationId);
             const usageDoc = await tx.doc(NfUsage, runtime.conversationId);
             if (usage) usageDoc.judge = { ...usage, updated_at: now() };
-            control.status = rejected ? "ACTIVE" : "INTERRUPTED";
+            control.status = "INTERRUPTED";
             control.phase = "IDLE";
             control.last_error = message;
             control.updated_at = now();
@@ -143,7 +203,7 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
               status: "terminal",
               outcome: {
                 status: "completed",
-                result: rejected ? rejectionResult() : { action: null, interrupted: true },
+                result: { action: null, interrupted: true },
               },
             };
           }, context);

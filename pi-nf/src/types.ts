@@ -133,14 +133,7 @@ export class TaskDoneError extends Error {
   override name = "TaskDoneError";
 }
 
-export type HostStartOptions = {
-  contract: TaskContract;
-  db_path?: string;
-  initial_message?: string;
-};
+export class NotResumableError extends Error {
+  override name = "NotResumableError";
+}
 
-export type HostInspectOptions = {
-  context?: import("@earendil-works/chord/context").Context;
-};
-
-export type { ModelRef as NfModelRef };

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { ROOT_CONVERSATION_ID, type ModelRef } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -14,7 +15,7 @@ import type { Judge } from "../src/judge.js";
 
 const MODEL: ModelRef = { provider: "faux", modelId: "faux-model" };
 
-function models(responses: ReturnType<typeof fauxProvider>["setResponses"] extends (value: infer T) => unknown ? T : never): ReturnType<typeof createModels> {
+function models(responses: AssistantMessage[]): ReturnType<typeof createModels> {
   const collection = createModels();
   const faux = fauxProvider({ models: [{ id: "faux-model", name: "Faux Model" }] });
   collection.setProvider(faux.provider);

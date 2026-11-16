@@ -10,19 +10,17 @@ import {
   section,
 } from "@earendil-works/pi-durable";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
-import { ContractPolicy } from "./contract.js";
 import { NfContract, NfControl, NfEvent, NfRound, NfUsage } from "./docs.js";
 import type {
   ControlPhase,
   ControlStatus,
-  PreparedContract,
   SendReceipt,
   StartInput,
   StartReceipt,
   SupervisionStatus,
   TaskLimits,
 } from "./types.js";
-import { AlreadyStartedError, NotStartedError, TaskDoneError } from "./types.js";
+import { AlreadyStartedError, NotResumableError, NotStartedError, TaskDoneError } from "./types.js";
 
 export const START_REQUEST_PREFIX = "nf:start";
 
@@ -60,7 +58,6 @@ export class Supervision {
     private readonly harness: Harness,
     private readonly model: ModelRef,
     private readonly extensions: readonly Extension[] = NF_BASE_EXTENSIONS,
-    private readonly contracts = new ContractPolicy(),
   ) {}
 
   async start(input: StartInput, context: Context = BACKGROUND_CONTEXT): Promise<StartReceipt> {
@@ -135,6 +132,9 @@ export class Supervision {
     const result = await root.commit(async (tx) => {
       const control = await tx.doc(NfControl, root.id);
       if (control.status === "DONE") throw new TaskDoneError("DONE cannot accept new input.");
+      if (control.status === "INTERRUPTED" || control.status === "PAUSED") {
+        throw new NotResumableError(`${control.status} requires an explicit resume before new input.`);
+      }
       control.input_epoch += 1;
       control.updated_at = new Date().toISOString();
       if (control.status === "WAIT_EXTERNAL") control.status = "ACTIVE";
@@ -192,9 +192,5 @@ export class Supervision {
         })),
       },
     };
-  }
-
-  prepared(input: unknown): PreparedContract {
-    return this.contracts.prepare(input);
   }
 }

@@ -92,6 +92,37 @@ test("afterRun creates one judge task and records a CONTINUE decision", async ()
   }
 });
 
+test("an oversized contract fails the snapshot explicitly and moves to INTERRUPTED", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-budget-"));
+  const host = await Host.open({
+    storage: new MemoryStorage(),
+    models: modelsWithText("done"),
+    model: MODEL,
+    contract: {
+      ...contract(workspace),
+      goal: "x".repeat(30_000),
+    },
+    db_path: join(workspace, "state.sqlite"),
+    judge: new FixtureJudge({
+      action: "CONTINUE",
+      reason: "unused",
+      evidence_ids: [],
+      next_message: "unused",
+      external: null,
+    }),
+  });
+  try {
+    await host.start();
+    await host.waitForIdle();
+    const status = await host.inspect();
+    assert.equal(status.status, "INTERRUPTED");
+    assert.match(status.last_error ?? "", /24k/i);
+  } finally {
+    await host.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test("a DONE decision is accepted only with cited tool evidence", async () => {
   const judge: Judge = {
     async decide(snapshot) {
@@ -131,9 +162,11 @@ test("a DONE decision is accepted only with cited tool evidence", async () => {
   }
 });
 
-test("an invalid DONE decision is rejected and cannot set DONE", async () => {
+test("an invalid DONE decision is retried and ends INTERRUPTED, never DONE", async () => {
+  let calls = 0;
   const judge: Judge = {
     async decide() {
+      calls += 1;
       return {
         action: "DONE",
         reason: "worker says so",
@@ -156,8 +189,9 @@ test("an invalid DONE decision is rejected and cannot set DONE", async () => {
     await host.start();
     await host.waitForIdle();
     const status = await host.inspect();
-    assert.equal(status.status, "ACTIVE");
+    assert.equal(status.status, "INTERRUPTED");
     assert.equal(status.last_decision, null);
+    assert.equal(calls, 3);
     const control = await host.harness.snapshot(NfControl, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
     assert.match(control?.last_error ?? "", /unknown evidence ID/i);
     const round = await host.harness.snapshot(NfRound, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
