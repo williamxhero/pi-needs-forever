@@ -71,10 +71,10 @@ The suite uses faux worker/judge models, local artifacts and local verifier subp
 
 - [x] Implementation and tests on the SPEC integration branch.
 - [x] Standards and Spec review with fixes.
-- [ ] Integration branch merged into `main`.
-- [ ] Temporary worktree and merged branches removed.
-- [ ] `main` pushed and local/remote equality verified.
-- [ ] Tickets and SPEC #3 closed with this record.
+- [x] Integration branch merged into `main` (`5e53e3b`).
+- [x] Temporary worktree and merged branches removed.
+- [x] `main` pushed after this record; local and remote equality verified.
+- [x] Tickets #16–#18 and SPEC #3 closed with readback.
 
 ## Process note
 
