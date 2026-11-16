@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi-nf 两张图 · 分层与流程</title>
+<style>
+  :root {
+    --bg: #f4f7fc;
+    --paper: #ffffff;
+    --ink: #172033;
+    --muted: #5c687c;
+    --line: #dce3ef;
+    --blue: #1d4ed8;
+    --blue-soft: #eef4ff;
+    --purple: #6d28d9;
+    --purple-soft: #f4efff;
+    --orange: #c2410c;
+    --orange-soft: #fff2e8;
+    --green: #15803d;
+    --green-soft: #eaf8ef;
+    --gray-soft: #f2f5fa;
+    --shadow: 0 14px 34px rgba(23, 32, 51, .08);
+    --radius: 18px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    line-height: 1.65;
+    background:
+      radial-gradient(1000px 520px at 8% -12%, #e4edff 0%, transparent 62%),
+      radial-gradient(850px 480px at 100% 0%, #f2e9ff 0%, transparent 58%),
+      var(--bg);
+  }
+
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .page {
+    width: min(1120px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 28px 0 64px;
+  }
+
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding: 42px 44px 34px;
+    border: 1px solid rgba(255, 255, 255, .72);
+    border-radius: 26px;
+    background: linear-gradient(135deg, rgba(255,255,255,.97), rgba(255,255,255,.84));
+    box-shadow: var(--shadow);
+  }
+
+  .hero::after {
+    content: "";
+    position: absolute;
+    width: 250px;
+    height: 250px;
+    right: -78px;
+    top: -92px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(29,78,216,.16), rgba(109,40,217,.14));
+  }
+
+  .eyebrow {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 5px 11px;
+    border: 1px solid #cfd9ea;
+    border-radius: 999px;
+    color: #334155;
+    background: rgba(255,255,255,.7);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+  }
+
+  .eyebrow .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+  }
+
+  h1 {
+    position: relative;
+    z-index: 1;
+    max-width: 760px;
+    margin: 0;
+    font-size: clamp(30px, 4vw, 44px);
+    line-height: 1.2;
+    letter-spacing: -.02em;
+    text-wrap: balance;
+  }
+
+  .lede {
+    position: relative;
+    z-index: 1;
+    max-width: 820px;
+    margin: 14px 0 0;
+    color: var(--muted);
+    font-size: clamp(15px, 1.6vw, 18px);
+  }
+
+  .role-boundary {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .role-card {
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: #fff;
+  }
+
+  .role-card.a { border-color: #ffd8bf; background: #fffaf6; }
+  .role-card.b { border-color: #c9d9ff; background: #f7faff; }
+  .role-card.c { border-color: #d8c6ff; background: #fbf8ff; }
+
+  .role-card b { display: block; margin: 5px 0 2px; font-size: 14px; }
+  .role-card p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+  .harness-note {
+    position: relative;
+    z-index: 1;
+    margin-top: 12px;
+    padding: 11px 13px;
+    border-left: 3px solid var(--blue);
+    border-radius: 0 10px 10px 0;
+    background: #f5f8ff;
+    color: #334155;
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+
+  .harness-note p { margin: 0; }
+  .harness-note p + p { margin-top: 5px; }
+  .harness-note .owner { vertical-align: 1px; }
+
+  .legend {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .legend i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+  .legend .a { background: var(--orange); }
+  .legend .b { background: var(--blue); }
+  .legend .c { background: var(--purple); }
+  .legend .v { background: var(--green); }
+  .legend .p { background: #0f766e; }
+
+  .hero-links {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .hero-links a {
+    padding: 7px 13px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .hero-links a:hover { border-color: #aabbd6; color: var(--blue); text-decoration: none; }
+
+  .draft-note {
+    position: relative;
+    z-index: 1;
+    margin: 12px 0 0;
+    color: #6b7a90;
+    font-size: 12.5px;
+  }
+
+  .diagram-card {
+    margin-top: 22px;
+    padding: 30px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: rgba(255,255,255,.94);
+    box-shadow: var(--shadow);
+  }
+
+  .diagram-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  .fig-badge {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 54px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 9px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    box-shadow: 0 6px 14px rgba(29,78,216,.18);
+  }
+
+  .diagram-head h2 {
+    margin: 0;
+    font-size: clamp(20px, 2.4vw, 26px);
+    line-height: 1.3;
+    letter-spacing: -.01em;
+  }
+
+  .diagram-head p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .stack { margin-top: 20px; }
+
+  .band {
+    display: grid;
+    grid-template-columns: 190px 1fr;
+    gap: 18px;
+    align-items: stretch;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-left: 6px solid var(--purple);
+    border-radius: 16px;
+    background: linear-gradient(90deg, var(--purple-soft), #fdfbff);
+  }
+
+  .band.durable {
+    border-left-color: var(--blue);
+    background: linear-gradient(90deg, var(--blue-soft), #fbfdff);
+  }
+
+  .band.pi {
+    border-left-color: var(--orange);
+    background: linear-gradient(90deg, var(--orange-soft), #fffdfb);
+  }
+
+  .band.provider {
+    border-left-color: #0f766e;
+    background: linear-gradient(90deg, #ecfdf5, #fbfffd);
+  }
+
+  .band.provider .band-name { color: #0f766e; }
+  .band.provider .cap { border-color: #b7e4d8; }
+  .provider-caps { grid-template-columns: 1fr; }
+  .models-cap { min-height: 62px; }
+
+  .band-label {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-right: 14px;
+    border-right: 1px dashed rgba(100,116,139,.28);
+  }
+
+  .band-name { font-size: 22px; font-weight: 900; letter-spacing: -.02em; }
+  .band.nf .band-name { color: var(--purple); }
+  .band.durable .band-name { color: var(--blue); }
+  .band.pi .band-name { color: var(--orange); }
+
+  .band-role { margin-top: 2px; color: #334155; font-size: 13px; font-weight: 800; }
+  .band-note { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+  .band-caps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .cap {
+    padding: 12px 13px;
+    border: 1px solid rgba(203,213,225,.9);
+    border-radius: 11px;
+    background: rgba(255,255,255,.82);
+  }
+
+  .cap-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .cap b { display: block; font-size: 14px; line-height: 1.35; }
+  .cap small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+  .owner {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .owner.a { color: #c2410c; background: #fff2e8; border-color: #ffd8bf; }
+  .owner.b { color: #1d4ed8; background: #eef4ff; border-color: #c9d9ff; }
+  .owner.c { color: #6d28d9; background: #f4efff; border-color: #d8c6ff; }
+  .owner.v { color: #15803d; background: #eaf8ef; border-color: #a7e0bd; }
+  .owner.p { color: #0f766e; background: #ecfdf5; border-color: #b7e4d8; }
+
+  .owner-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: #f8faff;
+    color: #475569;
+    font-size: 12px;
+  }
+
+  .owner-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  .band.nf .cap { border-color: #dccffb; }
+  .band.durable .cap { border-color: #c9d9ff; }
+  .band.pi .cap { border-color: #ffd8bf; }
+
+  .band-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .band-arrow span { font-size: 16px; line-height: 1; }
+
+  .stack-note,
+  .flow-note {
+    margin-top: 14px;
+    padding: 11px 14px;
+    border: 1px dashed #b8c7df;
+    border-radius: 11px;
+    background: #f8faff;
+    color: #334155;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .mermaid-svg {
+    margin-top: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mermaid-svg svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-width: 1050px;
+    max-width: 100% !important;
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  }
+
+  .diagram-note {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 12.5px;
+    text-align: center;
+  }
+
+  .owner-bg { stroke-width: 1; }
+  .owner-bg.a { fill: #fff2e8; stroke: #ffd8bf; }
+  .owner-bg.b { fill: #eef4ff; stroke: #c9d9ff; }
+  .owner-bg.c { fill: #f4efff; stroke: #d8c6ff; }
+  .owner-bg.v { fill: #eaf8ef; stroke: #a7e0bd; }
+  .owner-bg.p { fill: #ecfdf5; stroke: #b7e4d8; }
+
+  .owner-text { font-size: 9px; font-weight: 800; text-anchor: middle; }
+  .owner-text.a { fill: #c2410c; }
+  .owner-text.b { fill: #1d4ed8; }
+  .owner-text.c { fill: #6d28d9; }
+  .owner-text.v { fill: #15803d; }
+  .owner-text.p { fill: #0f766e; }
+
+  .footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--line);
+    color: var(--muted);
+    font-size: 12.5px;
+    text-align: center;
+  }
+
+  .footer a { font-weight: 600; }
+
+  @media (min-width: 681px) {
+    .band.nf .band-caps { grid-template-columns: repeat(4, 1fr); }
+  }
+
+  @media (max-width: 880px) {
+    .band { grid-template-columns: 150px 1fr; gap: 14px; }
+    .band-name { font-size: 19px; }
+  }
+
+  @media (max-width: 680px) {
+    .page { width: min(100% - 20px, 680px); padding-top: 14px; }
+    .hero { padding: 28px 22px; border-radius: 20px; }
+    .diagram-card { padding: 22px 18px; }
+    .band { grid-template-columns: 1fr; gap: 12px; padding: 15px; }
+    .band-label {
+      padding: 0 0 10px;
+      border-right: 0;
+      border-bottom: 1px dashed rgba(100,116,139,.28);
+    }
+    .band-caps { grid-template-columns: 1fr 1fr; }
+    .role-boundary { grid-template-columns: 1fr; }
+    .cap { padding: 10px 11px; }
+    .decision { align-items: flex-start; flex-direction: column; gap: 3px; }
+    .decision span { text-align: left; }
+    .diagram-head { gap: 10px; }
+    .fig-badge { min-width: 48px; }
+  }
+
+  @media (max-width: 460px) {
+    .band-caps { grid-template-columns: 1fr; }
+    .jstep { align-items: flex-start; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .page { width: 100%; padding: 0; }
+    .hero, .diagram-card { box-shadow: none; break-inside: avoid; }
+    .hero-links { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <p class="eyebrow"><span class="dot"></span> pi-nf · 两张主图 + 状态图</p>
+    <h1>pi-nf 架构：模块、时序、状态</h1>
+    <p class="lede">
+      Pi 会干活，Pi-Durable 记得住，pi-nf 判断什么时候继续、什么时候算完成，V 做最后验收。
+    </p>
+
+    <div class="role-boundary" aria-label="A B C 功能分界">
+      <div class="role-card a">
+        <span class="owner a">A</span>
+        <b>执行者</b>
+        <p>真正干活：改代码、跑命令、用工具；模型由 Provider（P）提供。它只能说“我做完了”，没有最终判定权。</p>
+      </div>
+      <div class="role-card b">
+        <span class="owner b">B</span>
+        <b>监督者</b>
+        <p>持有合同、状态、证据、投递、恢复和限额。它决定下一步，不替 A 干活。</p>
+      </div>
+      <div class="role-card c">
+        <span class="owner c">C</span>
+        <b>裁判</b>
+        <p>只看 B 给的证据，判 CONTINUE / DONE / WAIT_EXTERNAL。Judge 通过 P 调模型，但没有工具，不能改文件、跑命令。</p>
+      </div>
+    </div>
+
+    <div class="harness-note">
+      <p><strong>不同 Agent Harness，模块来源不同：</strong>Pi-Durable 已经提供的（Harness / tasks / docs / submissions / storage），pi-nf 直接用；Codex 没有这一层，所以 task / state / delivery / recovery / verification 由 NF 的 B 组自己补。</p>
+      <p><strong>Provider 是基础设施，不属于 A / B / C / V：</strong>它包含 Models，Pi 和 Judge 只是调用它。当前可以是 CPA，也可以是 OpenAI、OpenCode 或其他兼容服务。</p>
+      <p><span class="owner v">V</span> 是独立验收，不属于 A / B / C：B 触发它，但它不是 A 的工具循环，也不是 C 的判断。</p>
+    </div>
+
+    <div class="legend">
+      <span><i class="a"></i>A 用 Pi（通过 P 调模型）</span>
+      <span><i class="b"></i>B 用 Pi-Durable + pi-nf</span>
+      <span><i class="c"></i>C 用 pi-nf（Judge 用 P）</span>
+      <span><i class="v"></i>V 独立验收</span>
+      <span><i class="p"></i>P Provider（基础设施）</span>
+    </div>
+    <nav class="hero-links" aria-label="图目录">
+      <a href="#layers">图 1 · 模块归属</a>
+      <a href="#flow">图 2 · 时序</a>
+      <a href="#state">图 3 · 状态（可选）</a>
+    </nav>
+    <p class="draft-note">目标架构设计稿；当前仓库仍在从 Codex Supervisor 迁移，尚未实现本图全部能力。</p>
+  </header>
+
+  <section class="diagram-card" id="layers">
+    <div class="diagram-head">
+      <div class="fig-badge">图 1</div>
+      <div>
+        <h2>模块归属：谁提供什么能力</h2>
+        <p>从上往下：pi-nf 做判断，Pi-Durable 做持久化，Pi 做执行，Provider 提供模型。</p>
+      </div>
+    </div>
+
+    <div class="owner-legend">
+      <span><span class="owner a">A</span> 执行者</span>
+      <span><span class="owner b">B</span> 监督者</span>
+      <span><span class="owner c">C</span> 裁判</span>
+      <span><span class="owner v">V</span> 独立验收（不属于 A / B / C）</span>
+      <span><span class="owner p">P</span> 使用 Provider（基础设施，不是归属）</span>
+    </div>
+
+    <div class="stack">
+      <section class="band nf">
+        <div class="band-label">
+          <div class="band-name">pi-nf</div>
+          <div class="band-role">监督层</div>
+          <div class="band-note">B 的策略 + C 的判断 + V 的独立验收</div>
+        </div>
+        <div class="band-caps">
+          <div class="cap"><div class="cap-head"><b>ContractPolicy</b><span class="owner b">B</span></div><small>合同校验 / 路径 / 授权 / hash</small></div>
+          <div class="cap"><div class="cap-head"><b>EvidenceBuilder</b><span class="owner b">B</span></div><small>entries → 证据包 / 24k 预算 / 省略收据</small></div>
+          <div class="cap"><div class="cap-head"><b>Judge (C)</b><span class="owner c">C</span><span class="owner p">P</span></div><small>看证据，判 CONTINUE / DONE / WAIT_EXTERNAL；使用 Provider</small></div>
+          <div class="cap"><div class="cap-head"><b>CompletionGate</b><span class="owner v">V</span></div><small>独立验收门：固定命令 + 文件 hash，守住 DONE</small></div>
+          <div class="cap"><div class="cap-head"><b>Lifecycle</b><span class="owner b">B</span></div><small>暂停 / 恢复 / 限额 / 状态</small></div>
+          <div class="cap"><div class="cap-head"><b>RoutePolicy</b><span class="owner b">B</span></div><small>C 提议路线，B 记账与准入；第三次等价尝试拒绝</small></div>
+          <div class="cap"><div class="cap-head"><b>Supervision</b><span class="owner b">B</span></div><small>唯一外部 seam；编排合同、Judge、生命周期和验收</small></div>
+        </div>
+      </section>
+
+      <div class="band-arrow"><span>↓</span> 使用</div>
+
+      <section class="band durable">
+        <div class="band-label">
+          <div class="band-name">Pi-Durable</div>
+          <div class="band-role">持久化执行层</div>
+          <div class="band-note">B 的记忆（A 的对话也存这里）</div>
+        </div>
+        <div class="band-caps">
+          <div class="cap"><div class="cap-head"><b>Harness</b><span class="owner b">B</span></div><small>conversation / run</small></div>
+          <div class="cap"><div class="cap-head"><b>tasks</b><span class="owner b">B</span></div><small>检查点 / 崩溃续跑</small></div>
+          <div class="cap"><div class="cap-head"><b>docs</b><span class="owner b">B</span></div><small>合同 / 控制状态 / 轮次</small></div>
+          <div class="cap"><div class="cap-head"><b>submissions</b><span class="owner b">B</span></div><small>requestId / 精确一次</small></div>
+          <div class="cap"><div class="cap-head"><b>storage</b><span class="owner b">B</span></div><small>SQLite / JSONL / Memory</small></div>
+        </div>
+      </section>
+
+      <div class="band-arrow"><span>↓</span> 使用</div>
+
+      <section class="band pi">
+        <div class="band-label">
+          <div class="band-name">Pi</div>
+          <div class="band-role">Agent 能力层</div>
+          <div class="band-note">A 的 agent 循环；通过 P 调模型</div>
+        </div>
+        <div class="band-caps">
+          <div class="cap"><div class="cap-head"><b>messages</b><span class="owner a">A</span></div><small>消息 / 上下文</small></div>
+          <div class="cap"><div class="cap-head"><b>tools</b><span class="owner a">A</span></div><small>改代码 / 跑命令</small></div>
+          <div class="cap"><div class="cap-head"><b>prompt</b><span class="owner a">A</span></div><small>system prompt / 合同</small></div>
+          <div class="cap"><div class="cap-head"><b>agent loop</b><span class="owner a">A</span><span class="owner p">P</span></div><small>多轮执行；使用 Provider</small></div>
+        </div>
+      </section>
+
+      <div class="band-arrow"><span>↓</span> Pi 调用</div>
+
+      <section class="band provider">
+        <div class="band-label">
+          <div class="band-name">Provider</div>
+          <div class="band-role">模型基础设施</div>
+          <div class="band-note">Pi / Judge 调用</div>
+        </div>
+        <div class="band-caps provider-caps">
+          <div class="cap models-cap">
+            <div class="cap-head"><b>Models</b></div>
+            <small>CPA / OpenAI / OpenCode / ...</small>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="stack-note">
+      pi-nf 不重写下面三层；它只在 Pi、Pi-Durable、Provider 之上加“判断”和“验收”。
+    </div>
+  </section>
+
+  <section class="diagram-card" id="flow">
+    <div class="diagram-head">
+      <div class="fig-badge">图 2</div>
+      <div>
+        <h2>时序：一次需求的调用</h2>
+        <p>从 SPEC 到交付物；只画主要调用链。支撑模块见上面的模块归属图。</p>
+      </div>
+    </div>
+    <div class="mermaid-svg">
+<svg id="fc-sequence" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 2086px; background-color: transparent;" viewBox="-50 -10 2086 1231" role="graphics-document document" aria-roledescription="sequence"><g><rect x="1836" y="1100" fill="#eaeaea" stroke="#666" width="150" height="80" name="D" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1911" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1911" dy="0">交付物</tspan></text></g><g><rect x="1620" y="1100" fill="#eaeaea" stroke="#666" width="166" height="80" name="G" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1703" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1703" dy="0">CompletionGate (V)</tspan></text></g><g><rect x="1420" y="1100" fill="#eaeaea" stroke="#666" width="150" height="80" name="S" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1495" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1495" dy="0">submissions (B)</tspan></text></g><g><rect x="1220" y="1100" fill="#eaeaea" stroke="#666" width="150" height="80" name="J" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1295" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1295" dy="0">Judge (C/P)</tspan></text></g><g><rect x="1004" y="1100" fill="#eaeaea" stroke="#666" width="166" height="80" name="E" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1087" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1087" dy="0">EvidenceBuilder (B)</tspan></text></g><g><rect x="804" y="1100" fill="#eaeaea" stroke="#666" width="150" height="80" name="H" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="879" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="879" dy="0">Harness (B)</tspan></text></g><g><rect x="604" y="1100" fill="#eaeaea" stroke="#666" width="150" height="80" name="L" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="679" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="679" dy="0">agent loop (A/P)</tspan></text></g><g><rect x="404" y="1100" fill="#eaeaea" stroke="#666" width="150" height="80" name="M" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="479" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="479" dy="0">messages (A)</tspan></text></g><g><rect x="200" y="1100" fill="#eaeaea" stroke="#666" width="154" height="80" name="CP" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="277" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="277" dy="0">ContractPolicy (B)</tspan></text></g><g><rect x="0" y="1100" fill="#eaeaea" stroke="#666" width="150" height="80" name="U" rx="6" ry="6" class="actor actor-bottom" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="75" y="1140" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="75" dy="0">用户</tspan></text></g><g><line id="actor9" x1="1911" y1="80" x2="1911" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="D" data-et="life-line" data-id="D"/><g id="root-9" data-look="neo" data-et="participant" data-type="participant" data-id="D"><rect x="1836" y="0" fill="#eaeaea" stroke="#666" width="150" height="80" name="D" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1911" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1911" dy="0">交付物</tspan></text></g></g><g><line id="actor8" x1="1703" y1="80" x2="1703" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="G" data-et="life-line" data-id="G"/><g id="root-8" data-look="neo" data-et="participant" data-type="participant" data-id="G"><rect x="1620" y="0" fill="#eaeaea" stroke="#666" width="166" height="80" name="G" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1703" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1703" dy="0">CompletionGate (V)</tspan></text></g></g><g><line id="actor7" x1="1495" y1="80" x2="1495" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="S" data-et="life-line" data-id="S"/><g id="root-7" data-look="neo" data-et="participant" data-type="participant" data-id="S"><rect x="1420" y="0" fill="#eaeaea" stroke="#666" width="150" height="80" name="S" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1495" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1495" dy="0">submissions (B)</tspan></text></g></g><g><line id="actor6" x1="1295" y1="80" x2="1295" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="J" data-et="life-line" data-id="J"/><g id="root-6" data-look="neo" data-et="participant" data-type="participant" data-id="J"><rect x="1220" y="0" fill="#eaeaea" stroke="#666" width="150" height="80" name="J" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1295" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1295" dy="0">Judge (C/P)</tspan></text></g></g><g><line id="actor5" x1="1087" y1="80" x2="1087" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="E" data-et="life-line" data-id="E"/><g id="root-5" data-look="neo" data-et="participant" data-type="participant" data-id="E"><rect x="1004" y="0" fill="#eaeaea" stroke="#666" width="166" height="80" name="E" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="1087" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1087" dy="0">EvidenceBuilder (B)</tspan></text></g></g><g><line id="actor4" x1="879" y1="80" x2="879" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="H" data-et="life-line" data-id="H"/><g id="root-4" data-look="neo" data-et="participant" data-type="participant" data-id="H"><rect x="804" y="0" fill="#eaeaea" stroke="#666" width="150" height="80" name="H" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="879" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="879" dy="0">Harness (B)</tspan></text></g></g><g><line id="actor3" x1="679" y1="80" x2="679" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="L" data-et="life-line" data-id="L"/><g id="root-3" data-look="neo" data-et="participant" data-type="participant" data-id="L"><rect x="604" y="0" fill="#eaeaea" stroke="#666" width="150" height="80" name="L" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="679" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="679" dy="0">agent loop (A/P)</tspan></text></g></g><g><line id="actor2" x1="479" y1="80" x2="479" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="M" data-et="life-line" data-id="M"/><g id="root-2" data-look="neo" data-et="participant" data-type="participant" data-id="M"><rect x="404" y="0" fill="#eaeaea" stroke="#666" width="150" height="80" name="M" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="479" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="479" dy="0">messages (A)</tspan></text></g></g><g><line id="actor1" x1="277" y1="80" x2="277" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="CP" data-et="life-line" data-id="CP"/><g id="root-1" data-look="neo" data-et="participant" data-type="participant" data-id="CP"><rect x="200" y="0" fill="#eaeaea" stroke="#666" width="154" height="80" name="CP" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="277" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="277" dy="0">ContractPolicy (B)</tspan></text></g></g><g><line id="actor0" x1="75" y1="80" x2="75" y2="1100" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="U" data-et="life-line" data-id="U"/><g id="root-0" data-look="neo" data-et="participant" data-type="participant" data-id="U"><rect x="0" y="0" fill="#eaeaea" stroke="#666" width="150" height="80" name="U" rx="6" ry="6" class="actor actor-top" data-look="neo" filter="url(#fc-sequence-drop-shadow)"/><text x="75" y="40" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="75" dy="0">用户</tspan></text></g></g><style>#fc-sequence{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#000000;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#fc-sequence .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#fc-sequence .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#fc-sequence .error-icon{fill:#552222;}#fc-sequence .error-text{fill:#552222;stroke:#552222;}#fc-sequence .edge-thickness-normal{stroke-width:1px;}#fc-sequence .edge-thickness-thick{stroke-width:3.5px;}#fc-sequence .edge-pattern-solid{stroke-dasharray:0;}#fc-sequence .edge-thickness-invisible{stroke-width:0;fill:none;}#fc-sequence .edge-pattern-dashed{stroke-dasharray:3;}#fc-sequence .edge-pattern-dotted{stroke-dasharray:2;}#fc-sequence .marker{fill:#666;stroke:#666;}#fc-sequence .marker.cross{stroke:#666;}#fc-sequence svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#fc-sequence p{margin:0;}#fc-sequence .actor{stroke:hsl(0, 0%, 83%);fill:#eee;stroke-width:1;}#fc-sequence rect.actor.outer-path[data-look="neo"]{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-sequence rect.note[data-look="neo"]{stroke:#999;fill:#666;filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-sequence text.actor&gt;tspan{fill:#333;stroke:none;}#fc-sequence .actor-line{stroke:hsl(0, 0%, 83%);}#fc-sequence .innerArc{stroke-width:1.5;stroke-dasharray:none;}#fc-sequence .messageLine0{stroke-width:1.5;stroke-dasharray:none;stroke:#333;}#fc-sequence .messageLine1{stroke-width:1.5;stroke-dasharray:2,2;stroke:#333;}#fc-sequence [id$="-arrowhead"] path{fill:#333;stroke:#333;}#fc-sequence .sequenceNumber{fill:white;}#fc-sequence [id$="-sequencenumber"]{fill:#333;}#fc-sequence [id$="-crosshead"] path{fill:#333;stroke:#333;}#fc-sequence .messageText{fill:#333;stroke:none;}#fc-sequence .labelBox{stroke:hsl(0, 0%, 83%);fill:#eee;filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-sequence .labelText,#fc-sequence .labelText&gt;tspan{fill:#333;stroke:none;}#fc-sequence .loopText,#fc-sequence .loopText&gt;tspan{fill:#333;stroke:none;}#fc-sequence .sectionTitle,#fc-sequence .sectionTitle&gt;tspan{fill:#333;stroke:none;}#fc-sequence .loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:hsl(0, 0%, 83%);fill:hsl(0, 0%, 83%);}#fc-sequence .note{stroke:#999;fill:#666;}#fc-sequence .noteText,#fc-sequence .noteText&gt;tspan{fill:#fff;stroke:none;}#fc-sequence .activation0{fill:#f4f4f4;stroke:#666;}#fc-sequence .activation1{fill:#f4f4f4;stroke:#666;}#fc-sequence .activation2{fill:#f4f4f4;stroke:#666;}#fc-sequence .actorPopupMenu{position:absolute;}#fc-sequence .actorPopupMenuPanel{position:absolute;fill:#eee;box-shadow:0px 8px 16px 0px rgba(0,0,0,0.2);filter:drop-shadow(3px 5px 2px rgb(0 0 0 / 0.4));}#fc-sequence .actor-man circle,#fc-sequence line{fill:#eee;stroke-width:2px;}#fc-sequence g rect.rect{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));stroke:#999;}#fc-sequence .node .neo-node{stroke:#999;}#fc-sequence [data-look="neo"].node rect,#fc-sequence [data-look="neo"].cluster rect,#fc-sequence [data-look="neo"].node polygon{stroke:url(#fc-sequence-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-sequence [data-look="neo"].swimlane.cluster rect{filter:none;}#fc-sequence [data-look="neo"].node path{stroke:url(#fc-sequence-gradient);stroke-width:1px;}#fc-sequence [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-sequence [data-look="neo"].node .neo-line path{stroke:#999;filter:none;}#fc-sequence [data-look="neo"].node circle{stroke:url(#fc-sequence-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-sequence [data-look="neo"].node circle .state-start{fill:#000000;}#fc-sequence [data-look="neo"].icon-shape .icon{fill:url(#fc-sequence-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-sequence [data-look="neo"].icon-shape .icon-neo path{stroke:url(#fc-sequence-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-sequence text,#fc-sequence tspan,#fc-sequence .label,#fc-sequence .messageText,#fc-sequence .loopText,#fc-sequence .actor,#fc-sequence .nodeLabel,#fc-sequence .edgeLabel{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif!important;}#fc-sequence .actor{fill:rgb(248, 250, 252)!important;stroke:rgb(203, 213, 225)!important;}#fc-sequence :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g/><defs><symbol id="fc-sequence-computer" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs><defs><symbol id="fc-sequence-database" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="M12.258.001l.256.004.255.005.253.008.251.01.249.012.247.015.246.016.242.019.241.02.239.023.236.024.233.027.231.028.229.031.225.032.223.034.22.036.217.038.214.04.211.041.208.043.205.045.201.046.198.048.194.05.191.051.187.053.183.054.18.056.175.057.172.059.168.06.163.061.16.063.155.064.15.066.074.033.073.033.071.034.07.034.069.035.068.035.067.035.066.035.064.036.064.036.062.036.06.036.06.037.058.037.058.037.055.038.055.038.053.038.052.038.051.039.05.039.048.039.047.039.045.04.044.04.043.04.041.04.04.041.039.041.037.041.036.041.034.041.033.042.032.042.03.042.029.042.027.042.026.043.024.043.023.043.021.043.02.043.018.044.017.043.015.044.013.044.012.044.011.045.009.044.007.045.006.045.004.045.002.045.001.045v17l-.001.045-.002.045-.004.045-.006.045-.007.045-.009.044-.011.045-.012.044-.013.044-.015.044-.017.043-.018.044-.02.043-.021.043-.023.043-.024.043-.026.043-.027.042-.029.042-.03.042-.032.042-.033.042-.034.041-.036.041-.037.041-.039.041-.04.041-.041.04-.043.04-.044.04-.045.04-.047.039-.048.039-.05.039-.051.039-.052.038-.053.038-.055.038-.055.038-.058.037-.058.037-.06.037-.06.036-.062.036-.064.036-.064.036-.066.035-.067.035-.068.035-.069.035-.07.034-.071.034-.073.033-.074.033-.15.066-.155.064-.16.063-.163.061-.168.06-.172.059-.175.057-.18.056-.183.054-.187.053-.191.051-.194.05-.198.048-.201.046-.205.045-.208.043-.211.041-.214.04-.217.038-.22.036-.223.034-.225.032-.229.031-.231.028-.233.027-.236.024-.239.023-.241.02-.242.019-.246.016-.247.015-.249.012-.251.01-.253.008-.255.005-.256.004-.258.001-.258-.001-.256-.004-.255-.005-.253-.008-.251-.01-.249-.012-.247-.015-.245-.016-.243-.019-.241-.02-.238-.023-.236-.024-.234-.027-.231-.028-.228-.031-.226-.032-.223-.034-.22-.036-.217-.038-.214-.04-.211-.041-.208-.043-.204-.045-.201-.046-.198-.048-.195-.05-.19-.051-.187-.053-.184-.054-.179-.056-.176-.057-.172-.059-.167-.06-.164-.061-.159-.063-.155-.064-.151-.066-.074-.033-.072-.033-.072-.034-.07-.034-.069-.035-.068-.035-.067-.035-.066-.035-.064-.036-.063-.036-.062-.036-.061-.036-.06-.037-.058-.037-.057-.037-.056-.038-.055-.038-.053-.038-.052-.038-.051-.039-.049-.039-.049-.039-.046-.039-.046-.04-.044-.04-.043-.04-.041-.04-.04-.041-.039-.041-.037-.041-.036-.041-.034-.041-.033-.042-.032-.042-.03-.042-.029-.042-.027-.042-.026-.043-.024-.043-.023-.043-.021-.043-.02-.043-.018-.044-.017-.043-.015-.044-.013-.044-.012-.044-.011-.045-.009-.044-.007-.045-.006-.045-.004-.045-.002-.045-.001-.045v-17l.001-.045.002-.045.004-.045.006-.045.007-.045.009-.044.011-.045.012-.044.013-.044.015-.044.017-.043.018-.044.02-.043.021-.043.023-.043.024-.043.026-.043.027-.042.029-.042.03-.042.032-.042.033-.042.034-.041.036-.041.037-.041.039-.041.04-.041.041-.04.043-.04.044-.04.046-.04.046-.039.049-.039.049-.039.051-.039.052-.038.053-.038.055-.038.056-.038.057-.037.058-.037.06-.037.061-.036.062-.036.063-.036.064-.036.066-.035.067-.035.068-.035.069-.035.07-.034.072-.034.072-.033.074-.033.151-.066.155-.064.159-.063.164-.061.167-.06.172-.059.176-.057.179-.056.184-.054.187-.053.19-.051.195-.05.198-.048.201-.046.204-.045.208-.043.211-.041.214-.04.217-.038.22-.036.223-.034.226-.032.228-.031.231-.028.234-.027.236-.024.238-.023.241-.02.243-.019.245-.016.247-.015.249-.012.251-.01.253-.008.255-.005.256-.004.258-.001.258.001zm-9.258 20.499v.01l.001.021.003.021.004.022.005.021.006.022.007.022.009.023.01.022.011.023.012.023.013.023.015.023.016.024.017.023.018.024.019.024.021.024.022.025.023.024.024.025.052.049.056.05.061.051.066.051.07.051.075.051.079.052.084.052.088.052.092.052.097.052.102.051.105.052.11.052.114.051.119.051.123.051.127.05.131.05.135.05.139.048.144.049.147.047.152.047.155.047.16.045.163.045.167.043.171.043.176.041.178.041.183.039.187.039.19.037.194.035.197.035.202.033.204.031.209.03.212.029.216.027.219.025.222.024.226.021.23.02.233.018.236.016.24.015.243.012.246.01.249.008.253.005.256.004.259.001.26-.001.257-.004.254-.005.25-.008.247-.011.244-.012.241-.014.237-.016.233-.018.231-.021.226-.021.224-.024.22-.026.216-.027.212-.028.21-.031.205-.031.202-.034.198-.034.194-.036.191-.037.187-.039.183-.04.179-.04.175-.042.172-.043.168-.044.163-.045.16-.046.155-.046.152-.047.148-.048.143-.049.139-.049.136-.05.131-.05.126-.05.123-.051.118-.052.114-.051.11-.052.106-.052.101-.052.096-.052.092-.052.088-.053.083-.051.079-.052.074-.052.07-.051.065-.051.06-.051.056-.05.051-.05.023-.024.023-.025.021-.024.02-.024.019-.024.018-.024.017-.024.015-.023.014-.024.013-.023.012-.023.01-.023.01-.022.008-.022.006-.022.006-.022.004-.022.004-.021.001-.021.001-.021v-4.127l-.077.055-.08.053-.083.054-.085.053-.087.052-.09.052-.093.051-.095.05-.097.05-.1.049-.102.049-.105.048-.106.047-.109.047-.111.046-.114.045-.115.045-.118.044-.12.043-.122.042-.124.042-.126.041-.128.04-.13.04-.132.038-.134.038-.135.037-.138.037-.139.035-.142.035-.143.034-.144.033-.147.032-.148.031-.15.03-.151.03-.153.029-.154.027-.156.027-.158.026-.159.025-.161.024-.162.023-.163.022-.165.021-.166.02-.167.019-.169.018-.169.017-.171.016-.173.015-.173.014-.175.013-.175.012-.177.011-.178.01-.179.008-.179.008-.181.006-.182.005-.182.004-.184.003-.184.002h-.37l-.184-.002-.184-.003-.182-.004-.182-.005-.181-.006-.179-.008-.179-.008-.178-.01-.176-.011-.176-.012-.175-.013-.173-.014-.172-.015-.171-.016-.17-.017-.169-.018-.167-.019-.166-.02-.165-.021-.163-.022-.162-.023-.161-.024-.159-.025-.157-.026-.156-.027-.155-.027-.153-.029-.151-.03-.15-.03-.148-.031-.146-.032-.145-.033-.143-.034-.141-.035-.14-.035-.137-.037-.136-.037-.134-.038-.132-.038-.13-.04-.128-.04-.126-.041-.124-.042-.122-.042-.12-.044-.117-.043-.116-.045-.113-.045-.112-.046-.109-.047-.106-.047-.105-.048-.102-.049-.1-.049-.097-.05-.095-.05-.093-.052-.09-.051-.087-.052-.085-.053-.083-.054-.08-.054-.077-.054v4.127zm0-5.654v.011l.001.021.003.021.004.021.005.022.006.022.007.022.009.022.01.022.011.023.012.023.013.023.015.024.016.023.017.024.018.024.019.024.021.024.022.024.023.025.024.024.052.05.056.05.061.05.066.051.07.051.075.052.079.051.084.052.088.052.092.052.097.052.102.052.105.052.11.051.114.051.119.052.123.05.127.051.131.05.135.049.139.049.144.048.147.048.152.047.155.046.16.045.163.045.167.044.171.042.176.042.178.04.183.04.187.038.19.037.194.036.197.034.202.033.204.032.209.03.212.028.216.027.219.025.222.024.226.022.23.02.233.018.236.016.24.014.243.012.246.01.249.008.253.006.256.003.259.001.26-.001.257-.003.254-.006.25-.008.247-.01.244-.012.241-.015.237-.016.233-.018.231-.02.226-.022.224-.024.22-.025.216-.027.212-.029.21-.03.205-.032.202-.033.198-.035.194-.036.191-.037.187-.039.183-.039.179-.041.175-.042.172-.043.168-.044.163-.045.16-.045.155-.047.152-.047.148-.048.143-.048.139-.05.136-.049.131-.05.126-.051.123-.051.118-.051.114-.052.11-.052.106-.052.101-.052.096-.052.092-.052.088-.052.083-.052.079-.052.074-.051.07-.052.065-.051.06-.05.056-.051.051-.049.023-.025.023-.024.021-.025.02-.024.019-.024.018-.024.017-.024.015-.023.014-.023.013-.024.012-.022.01-.023.01-.023.008-.022.006-.022.006-.022.004-.021.004-.022.001-.021.001-.021v-4.139l-.077.054-.08.054-.083.054-.085.052-.087.053-.09.051-.093.051-.095.051-.097.05-.1.049-.102.049-.105.048-.106.047-.109.047-.111.046-.114.045-.115.044-.118.044-.12.044-.122.042-.124.042-.126.041-.128.04-.13.039-.132.039-.134.038-.135.037-.138.036-.139.036-.142.035-.143.033-.144.033-.147.033-.148.031-.15.03-.151.03-.153.028-.154.028-.156.027-.158.026-.159.025-.161.024-.162.023-.163.022-.165.021-.166.02-.167.019-.169.018-.169.017-.171.016-.173.015-.173.014-.175.013-.175.012-.177.011-.178.009-.179.009-.179.007-.181.007-.182.005-.182.004-.184.003-.184.002h-.37l-.184-.002-.184-.003-.182-.004-.182-.005-.181-.007-.179-.007-.179-.009-.178-.009-.176-.011-.176-.012-.175-.013-.173-.014-.172-.015-.171-.016-.17-.017-.169-.018-.167-.019-.166-.02-.165-.021-.163-.022-.162-.023-.161-.024-.159-.025-.157-.026-.156-.027-.155-.028-.153-.028-.151-.03-.15-.03-.148-.031-.146-.033-.145-.033-.143-.033-.141-.035-.14-.036-.137-.036-.136-.037-.134-.038-.132-.039-.13-.039-.128-.04-.126-.041-.124-.042-.122-.043-.12-.043-.117-.044-.116-.044-.113-.046-.112-.046-.109-.046-.106-.047-.105-.048-.102-.049-.1-.049-.097-.05-.095-.051-.093-.051-.09-.051-.087-.053-.085-.052-.083-.054-.08-.054-.077-.054v4.139zm0-5.666v.011l.001.02.003.022.004.021.005.022.006.021.007.022.009.023.01.022.011.023.012.023.013.023.015.023.016.024.017.024.018.023.019.024.021.025.022.024.023.024.024.025.052.05.056.05.061.05.066.051.07.051.075.052.079.051.084.052.088.052.092.052.097.052.102.052.105.051.11.052.114.051.119.051.123.051.127.05.131.05.135.05.139.049.144.048.147.048.152.047.155.046.16.045.163.045.167.043.171.043.176.042.178.04.183.04.187.038.19.037.194.036.197.034.202.033.204.032.209.03.212.028.216.027.219.025.222.024.226.021.23.02.233.018.236.017.24.014.243.012.246.01.249.008.253.006.256.003.259.001.26-.001.257-.003.254-.006.25-.008.247-.01.244-.013.241-.014.237-.016.233-.018.231-.02.226-.022.224-.024.22-.025.216-.027.212-.029.21-.03.205-.032.202-.033.198-.035.194-.036.191-.037.187-.039.183-.039.179-.041.175-.042.172-.043.168-.044.163-.045.16-.045.155-.047.152-.047.148-.048.143-.049.139-.049.136-.049.131-.051.126-.05.123-.051.118-.052.114-.051.11-.052.106-.052.101-.052.096-.052.092-.052.088-.052.083-.052.079-.052.074-.052.07-.051.065-.051.06-.051.056-.05.051-.049.023-.025.023-.025.021-.024.02-.024.019-.024.018-.024.017-.024.015-.023.014-.024.013-.023.012-.023.01-.022.01-.023.008-.022.006-.022.006-.022.004-.022.004-.021.001-.021.001-.021v-4.153l-.077.054-.08.054-.083.053-.085.053-.087.053-.09.051-.093.051-.095.051-.097.05-.1.049-.102.048-.105.048-.106.048-.109.046-.111.046-.114.046-.115.044-.118.044-.12.043-.122.043-.124.042-.126.041-.128.04-.13.039-.132.039-.134.038-.135.037-.138.036-.139.036-.142.034-.143.034-.144.033-.147.032-.148.032-.15.03-.151.03-.153.028-.154.028-.156.027-.158.026-.159.024-.161.024-.162.023-.163.023-.165.021-.166.02-.167.019-.169.018-.169.017-.171.016-.173.015-.173.014-.175.013-.175.012-.177.01-.178.01-.179.009-.179.007-.181.006-.182.006-.182.004-.184.003-.184.001-.185.001-.185-.001-.184-.001-.184-.003-.182-.004-.182-.006-.181-.006-.179-.007-.179-.009-.178-.01-.176-.01-.176-.012-.175-.013-.173-.014-.172-.015-.171-.016-.17-.017-.169-.018-.167-.019-.166-.02-.165-.021-.163-.023-.162-.023-.161-.024-.159-.024-.157-.026-.156-.027-.155-.028-.153-.028-.151-.03-.15-.03-.148-.032-.146-.032-.145-.033-.143-.034-.141-.034-.14-.036-.137-.036-.136-.037-.134-.038-.132-.039-.13-.039-.128-.041-.126-.041-.124-.041-.122-.043-.12-.043-.117-.044-.116-.044-.113-.046-.112-.046-.109-.046-.106-.048-.105-.048-.102-.048-.1-.05-.097-.049-.095-.051-.093-.051-.09-.052-.087-.052-.085-.053-.083-.053-.08-.054-.077-.054v4.153zm8.74-8.179l-.257.004-.254.005-.25.008-.247.011-.244.012-.241.014-.237.016-.233.018-.231.021-.226.022-.224.023-.22.026-.216.027-.212.028-.21.031-.205.032-.202.033-.198.034-.194.036-.191.038-.187.038-.183.04-.179.041-.175.042-.172.043-.168.043-.163.045-.16.046-.155.046-.152.048-.148.048-.143.048-.139.049-.136.05-.131.05-.126.051-.123.051-.118.051-.114.052-.11.052-.106.052-.101.052-.096.052-.092.052-.088.052-.083.052-.079.052-.074.051-.07.052-.065.051-.06.05-.056.05-.051.05-.023.025-.023.024-.021.024-.02.025-.019.024-.018.024-.017.023-.015.024-.014.023-.013.023-.012.023-.01.023-.01.022-.008.022-.006.023-.006.021-.004.022-.004.021-.001.021-.001.021.001.021.001.021.004.021.004.022.006.021.006.023.008.022.01.022.01.023.012.023.013.023.014.023.015.024.017.023.018.024.019.024.02.025.021.024.023.024.023.025.051.05.056.05.06.05.065.051.07.052.074.051.079.052.083.052.088.052.092.052.096.052.101.052.106.052.11.052.114.052.118.051.123.051.126.051.131.05.136.05.139.049.143.048.148.048.152.048.155.046.16.046.163.045.168.043.172.043.175.042.179.041.183.04.187.038.191.038.194.036.198.034.202.033.205.032.21.031.212.028.216.027.22.026.224.023.226.022.231.021.233.018.237.016.241.014.244.012.247.011.25.008.254.005.257.004.26.001.26-.001.257-.004.254-.005.25-.008.247-.011.244-.012.241-.014.237-.016.233-.018.231-.021.226-.022.224-.023.22-.026.216-.027.212-.028.21-.031.205-.032.202-.033.198-.034.194-.036.191-.038.187-.038.183-.04.179-.041.175-.042.172-.043.168-.043.163-.045.16-.046.155-.046.152-.048.148-.048.143-.048.139-.049.136-.05.131-.05.126-.051.123-.051.118-.051.114-.052.11-.052.106-.052.101-.052.096-.052.092-.052.088-.052.083-.052.079-.052.074-.051.07-.052.065-.051.06-.05.056-.05.051-.05.023-.025.023-.024.021-.024.02-.025.019-.024.018-.024.017-.023.015-.024.014-.023.013-.023.012-.023.01-.023.01-.022.008-.022.006-.023.006-.021.004-.022.004-.021.001-.021.001-.021-.001-.021-.001-.021-.004-.021-.004-.022-.006-.021-.006-.023-.008-.022-.01-.022-.01-.023-.012-.023-.013-.023-.014-.023-.015-.024-.017-.023-.018-.024-.019-.024-.02-.025-.021-.024-.023-.024-.023-.025-.051-.05-.056-.05-.06-.05-.065-.051-.07-.052-.074-.051-.079-.052-.083-.052-.088-.052-.092-.052-.096-.052-.101-.052-.106-.052-.11-.052-.114-.052-.118-.051-.123-.051-.126-.051-.131-.05-.136-.05-.139-.049-.143-.048-.148-.048-.152-.048-.155-.046-.16-.046-.163-.045-.168-.043-.172-.043-.175-.042-.179-.041-.183-.04-.187-.038-.191-.038-.194-.036-.198-.034-.202-.033-.205-.032-.21-.031-.212-.028-.216-.027-.22-.026-.224-.023-.226-.022-.231-.021-.233-.018-.237-.016-.241-.014-.244-.012-.247-.011-.25-.008-.254-.005-.257-.004-.26-.001-.26.001z"/></symbol></defs><defs><symbol id="fc-sequence-clock" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs><defs><marker id="fc-sequence-arrowhead" refX="7.9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M -1 0 L 10 5 L 0 10 z"/></marker></defs><defs><marker id="fc-sequence-crosshead" markerWidth="15" markerHeight="8" orient="auto" refX="4" refY="4.5"><path fill="none" stroke="#000000" stroke-width="1pt" d="M 1,2 L 6,7 M 6,2 L 1,7" style="stroke-dasharray: 0, 0;"/></marker></defs><defs><marker id="fc-sequence-filled-head" refX="15.5" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs><defs><marker id="fc-sequence-sequencenumber" refX="15" refY="15" markerWidth="60" markerHeight="40" orient="auto"><circle cx="15" cy="15" r="6"/></marker></defs><defs><marker id="fc-sequence-solidTopArrowHead" refX="7.9" refY="7.25" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 8 L 0 8 z"/></marker></defs><defs><marker id="fc-sequence-solidBottomArrowHead" refX="7.9" refY="0.75" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 0 L 0 8 z"/></marker></defs><defs><marker id="fc-sequence-stickTopArrowHead" refX="7.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 7 7" stroke="black" stroke-width="1.5" fill="none"/></marker></defs><defs><marker id="fc-sequence-stickBottomArrowHead" refX="7.5" refY="0" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 7 L 7 0" stroke="black" stroke-width="1.5" fill="none"/></marker></defs><defs><filter id="fc-sequence-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#FFFFFF"/></filter></defs><g data-et="control-structure" data-id="i16"><line x1="64" y1="438" x2="1922" y2="438" class="loopLine"/><line x1="1922" y1="438" x2="1922" y2="963" class="loopLine"/><line x1="64" y1="963" x2="1922" y2="963" class="loopLine"/><line x1="64" y1="438" x2="64" y2="963" class="loopLine"/><line x1="64" y1="608" x2="1922" y2="608" class="loopLine" style="stroke-dasharray: 3, 3;"/><line x1="64" y1="715" x2="1922" y2="715" class="loopLine" style="stroke-dasharray: 3, 3;"/><polygon points="64,438 114,438 114,466 105.6,473 64,473" class="labelBox"/><text x="89" y="458" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">alt</text><text x="1018" y="456" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;"><tspan x="1018">[CONTINUE]</tspan></text><text x="993" y="626" text-anchor="middle" class="sectionTitle" style="font-size: 16px; font-weight: 400;">[WAIT_EXTERNAL]</text><text x="993" y="733" text-anchor="middle" class="sectionTitle" style="font-size: 16px; font-weight: 400;">[DONE]</text></g><g data-et="control-structure" data-id="i19"><line x1="668" y1="973" x2="1714" y2="973" class="loopLine"/><line x1="1714" y1="973" x2="1714" y2="1080" class="loopLine"/><line x1="668" y1="1080" x2="1714" y2="1080" class="loopLine"/><line x1="668" y1="973" x2="668" y2="1080" class="loopLine"/><polygon points="668,973 718,973 718,1001 709.6,1008 668,1008" class="labelBox"/><text x="693" y="993" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">opt</text><text x="1216" y="991" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;"><tspan x="1216">[V 失败]</tspan></text></g><text x="173" y="95" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">SPEC</text><line x1="82" y1="138" x2="270" y2="138" class="messageLine0" data-et="message" data-id="i1" data-from="U" data-to="CP" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="fill: none;"/><line x1="75" y1="138" x2="75" y2="138" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="75" y="142" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">1</text><text x="375" y="153" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">contract</text><line x1="284" y1="196" x2="472" y2="196" class="messageLine0" data-et="message" data-id="i2" data-from="CP" data-to="M" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="fill: none;"/><line x1="277" y1="196" x2="277" y2="196" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="277" y="200" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">2</text><text x="576" y="211" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">context</text><line x1="486" y1="254" x2="672" y2="254" class="messageLine0" data-et="message" data-id="i3" data-from="M" data-to="L" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="fill: none;"/><line x1="479" y1="254" x2="479" y2="254" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="479" y="258" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">3</text><text x="776" y="269" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">run</text><line x1="686" y1="312" x2="872" y2="312" class="messageLine0" data-et="message" data-id="i4" data-from="L" data-to="H" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="fill: none;"/><line x1="679" y1="312" x2="679" y2="312" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="679" y="316" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">4</text><text x="980" y="327" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">entries</text><line x1="886" y1="370" x2="1080" y2="370" class="messageLine1" data-et="message" data-id="i5" data-from="H" data-to="E" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="stroke-dasharray: 3, 3; fill: none;"/><line x1="879" y1="370" x2="879" y2="370" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="879" y="374" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">5</text><text x="1188" y="385" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">snapshot</text><line x1="1094" y1="428" x2="1288" y2="428" class="messageLine1" data-et="message" data-id="i6" data-from="E" data-to="J" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="stroke-dasharray: 3, 3; fill: none;"/><line x1="1087" y1="428" x2="1087" y2="428" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="1087" y="432" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">6</text><text x="1392" y="492" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">direction</text><line x1="1302" y1="535" x2="1488" y2="535" class="messageLine0" data-et="message" data-id="i8" data-from="J" data-to="S" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="fill: none;"/><line x1="1295" y1="535" x2="1295" y2="535" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="1295" y="539" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">7</text><text x="1090" y="550" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">CONTINUE</text><line x1="1500" y1="593" x2="686" y2="593" class="messageLine1" data-et="message" data-id="i9" data-from="S" data-to="L" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="stroke-dasharray: 3, 3; fill: none;"/><line x1="1495" y1="593" x2="1495" y2="593" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="1495" y="597" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">8</text><text x="688" y="657" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">wait</text><line x1="1300" y1="700" x2="82" y2="700" class="messageLine1" data-et="message" data-id="i11" data-from="J" data-to="U" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="stroke-dasharray: 3, 3; fill: none;"/><line x1="1295" y1="700" x2="1295" y2="700" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="1295" y="704" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">9</text><text x="1496" y="764" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">DONE</text><line x1="1302" y1="807" x2="1696" y2="807" class="messageLine0" data-et="message" data-id="i13" data-from="J" data-to="G" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="fill: none;"/><line x1="1295" y1="807" x2="1295" y2="807" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="1295" y="811" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">10</text><text x="1704" y="822" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">verify</text><path d="M 1704,865 C 1764,855 1764,895 1704,885" class="messageLine0" data-et="message" data-id="i14" data-from="G" data-to="G" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" x1="1710" style="fill: none;"/><line x1="1703" y1="865" x2="1703" y2="865" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="1703" y="869" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">11</text><text x="1804" y="910" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">交付物</text><line x1="1710" y1="953" x2="1904" y2="953" class="messageLine1" data-et="message" data-id="i15" data-from="G" data-to="D" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="stroke-dasharray: 3, 3; fill: none;"/><line x1="1703" y1="953" x2="1703" y2="953" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="1703" y="957" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">12</text><text x="1194" y="1027" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">repair</text><line x1="1708" y1="1070" x2="686" y2="1070" class="messageLine1" data-et="message" data-id="i18" data-from="G" data-to="L" stroke-width="2" stroke="none" marker-end="url(#fc-sequence-arrowhead)" style="stroke-dasharray: 3, 3; fill: none;"/><line x1="1703" y1="1070" x2="1703" y2="1070" stroke-width="0" marker-start="url(#fc-sequence-sequencenumber)"/><text x="1703" y="1074" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">13</text></svg>
+    </div>
+    <p class="diagram-note">时序图关注“谁在什么时候调用谁”。Models / RoutePolicy / Lifecycle / prompt / tools / tasks / docs / storage / ExecutionEnv 等支撑模块见模块归属图；宽图可横向滑动。</p>
+  </section>
+
+  <section class="diagram-card" id="state">
+    <div class="diagram-head">
+      <div class="fig-badge">图 3 · 可选</div>
+      <div>
+        <h2>状态：任务在什么状态之间迁移</h2>
+        <p>只描述语义状态，不重复模块依赖。</p>
+      </div>
+    </div>
+    <div class="mermaid-svg">
+<svg id="fc-state" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="statediagram" style="max-width: 1194.8px; background-color: transparent;" viewBox="4 13.25 1194.8011474609375 364.25" role="graphics-document document" aria-roledescription="stateDiagram"><style>#fc-state{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#000000;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#fc-state .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#fc-state .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#fc-state .error-icon{fill:#552222;}#fc-state .error-text{fill:#552222;stroke:#552222;}#fc-state .edge-thickness-normal{stroke-width:1px;}#fc-state .edge-thickness-thick{stroke-width:3.5px;}#fc-state .edge-pattern-solid{stroke-dasharray:0;}#fc-state .edge-thickness-invisible{stroke-width:0;fill:none;}#fc-state .edge-pattern-dashed{stroke-dasharray:3;}#fc-state .edge-pattern-dotted{stroke-dasharray:2;}#fc-state .marker{fill:#666;stroke:#666;}#fc-state .marker.cross{stroke:#666;}#fc-state svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#fc-state p{margin:0;}#fc-state defs [id$="-barbEnd"]{fill:#000;stroke:#000;}#fc-state g.stateGroup text{fill:#999;stroke:none;font-size:10px;}#fc-state g.stateGroup text{fill:#000000;stroke:none;font-size:10px;}#fc-state g.stateGroup .state-title{font-weight:bolder;fill:#111111;}#fc-state g.stateGroup rect{fill:#eee;stroke:#999;}#fc-state g.stateGroup line{stroke:#666;stroke-width:1;}#fc-state .transition{stroke:#000;stroke-width:1;fill:none;}#fc-state .stateGroup .composit{fill:#ffffff;border-bottom:1px;}#fc-state .stateGroup .alt-composit{fill:#e0e0e0;border-bottom:1px;}#fc-state .state-note{stroke:#999;fill:#666;}#fc-state .state-note text{fill:#fff;stroke:none;font-size:10px;}#fc-state .stateLabel .box{stroke:none;stroke-width:0;fill:#eee;opacity:0.5;}#fc-state .edgeLabel .label rect{fill:#eee;opacity:0.5;}#fc-state .edgeLabel{background-color:white;text-align:center;}#fc-state .edgeLabel p{background-color:white;}#fc-state .edgeLabel rect{opacity:0.5;background-color:white;fill:white;}#fc-state .edgeLabel .label text{fill:#000000;}#fc-state .label div .edgeLabel{color:#000000;}#fc-state .stateLabel text{fill:#111111;font-size:10px;font-weight:bold;}#fc-state .node circle.state-start{fill:#222;stroke:#222;}#fc-state .node .fork-join{fill:#222;stroke:#222;}#fc-state .node circle.state-end{fill:hsl(0, 0%, 83.3333333333%);stroke:#ffffff;stroke-width:1.5;}#fc-state .end-state-inner{fill:#ffffff;stroke-width:1.5;}#fc-state .node rect{fill:#eee;stroke:#000;stroke-width:1px;}#fc-state .node polygon{fill:#eee;stroke:#000;stroke-width:1px;}#fc-state [id$="-barbEnd"]{fill:#666;}#fc-state .statediagram-cluster rect{fill:#eee;stroke:#000;stroke-width:1px;}#fc-state .cluster-label,#fc-state .nodeLabel{color:#111111;}#fc-state .statediagram-cluster rect.outer{rx:5px;ry:5px;}#fc-state .statediagram-state .divider{stroke:#000;}#fc-state .statediagram-state .title-state{rx:5px;ry:5px;}#fc-state .statediagram-cluster.statediagram-cluster .inner{fill:#ffffff;}#fc-state .statediagram-cluster.statediagram-cluster-alt .inner{fill:#f4f4f4;}#fc-state .statediagram-cluster .inner{rx:0;ry:0;}#fc-state .statediagram-state rect.basic{rx:5px;ry:5px;}#fc-state .statediagram-state rect.divider{stroke-dasharray:10,10;fill:#f4f4f4;}#fc-state .note-edge{stroke-dasharray:5;}#fc-state .statediagram-note rect{fill:#666;stroke:#999;stroke-width:1px;rx:0;ry:0;}#fc-state .statediagram-note rect{fill:#666;stroke:#999;stroke-width:1px;rx:0;ry:0;}#fc-state .statediagram-note text{fill:#fff;}#fc-state .statediagram-note .nodeLabel{color:#fff;}#fc-state .statediagram .edgeLabel{color:red;}#fc-state [id$="-dependencyStart"],#fc-state [id$="-dependencyEnd"]{fill:#666;stroke:#666;stroke-width:1;}#fc-state .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#000000;}#fc-state [data-look="neo"].statediagram-cluster rect{fill:#eee;stroke:url(#fc-state-gradient);stroke-width:1;}#fc-state [data-look="neo"].statediagram-cluster rect.outer{rx:5px;ry:5px;filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-state .node .neo-node{stroke:#999;}#fc-state [data-look="neo"].node rect,#fc-state [data-look="neo"].cluster rect,#fc-state [data-look="neo"].node polygon{stroke:url(#fc-state-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-state [data-look="neo"].swimlane.cluster rect{filter:none;}#fc-state [data-look="neo"].node path{stroke:url(#fc-state-gradient);stroke-width:1px;}#fc-state [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-state [data-look="neo"].node .neo-line path{stroke:#999;filter:none;}#fc-state [data-look="neo"].node circle{stroke:url(#fc-state-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-state [data-look="neo"].node circle .state-start{fill:#000000;}#fc-state [data-look="neo"].icon-shape .icon{fill:url(#fc-state-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-state [data-look="neo"].icon-shape .icon-neo path{stroke:url(#fc-state-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fc-state text,#fc-state tspan,#fc-state .label,#fc-state .messageText,#fc-state .loopText,#fc-state .actor,#fc-state .nodeLabel,#fc-state .edgeLabel{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif!important;}#fc-state .actor{fill:rgb(248, 250, 252)!important;stroke:rgb(203, 213, 225)!important;}#fc-state :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}#fc-state .active&gt;*{fill:rgb(238, 244, 255)!important;stroke:rgb(29, 78, 216)!important;color:rgb(23, 32, 51)!important;}#fc-state .active span{fill:rgb(238, 244, 255)!important;stroke:rgb(29, 78, 216)!important;color:rgb(23, 32, 51)!important;}#fc-state .active tspan{fill:rgb(23, 32, 51)!important;}#fc-state .judging&gt;*{fill:rgb(244, 239, 255)!important;stroke:rgb(109, 40, 217)!important;color:rgb(23, 32, 51)!important;}#fc-state .judging span{fill:rgb(244, 239, 255)!important;stroke:rgb(109, 40, 217)!important;color:rgb(23, 32, 51)!important;}#fc-state .judging tspan{fill:rgb(23, 32, 51)!important;}#fc-state .verifying&gt;*{fill:rgb(243, 252, 247)!important;stroke:rgb(34, 197, 94)!important;color:rgb(23, 32, 51)!important;}#fc-state .verifying span{fill:rgb(243, 252, 247)!important;stroke:rgb(34, 197, 94)!important;color:rgb(23, 32, 51)!important;}#fc-state .verifying tspan{fill:rgb(23, 32, 51)!important;}#fc-state .done&gt;*{fill:rgb(220, 252, 231)!important;stroke:rgb(22, 163, 74)!important;color:rgb(20, 83, 45)!important;}#fc-state .done span{fill:rgb(220, 252, 231)!important;stroke:rgb(22, 163, 74)!important;color:rgb(20, 83, 45)!important;}#fc-state .done tspan{fill:rgb(20, 83, 45)!important;}#fc-state .wait&gt;*{fill:rgb(255, 242, 232)!important;stroke:rgb(251, 146, 60)!important;color:rgb(154, 52, 18)!important;}#fc-state .wait span{fill:rgb(255, 242, 232)!important;stroke:rgb(251, 146, 60)!important;color:rgb(154, 52, 18)!important;}#fc-state .wait tspan{fill:rgb(154, 52, 18)!important;}#fc-state .paused&gt;*{fill:rgb(241, 245, 249)!important;stroke:rgb(148, 163, 184)!important;color:rgb(51, 65, 85)!important;}#fc-state .paused span{fill:rgb(241, 245, 249)!important;stroke:rgb(148, 163, 184)!important;color:rgb(51, 65, 85)!important;}#fc-state .paused tspan{fill:rgb(51, 65, 85)!important;}#fc-state .interrupted&gt;*{fill:rgb(253, 236, 236)!important;stroke:rgb(239, 68, 68)!important;color:rgb(153, 27, 27)!important;}#fc-state .interrupted span{fill:rgb(253, 236, 236)!important;stroke:rgb(239, 68, 68)!important;color:rgb(153, 27, 27)!important;}#fc-state .interrupted tspan{fill:rgb(153, 27, 27)!important;}</style><g><defs><marker id="fc-state_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"/></marker></defs><defs><marker id="fc-state_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="#000"/></marker></defs><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M26,188.41666666666663L60.5,188.41666666666663" id="fc-state-edge0" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 34.5 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge0" data-points="W3sieCI6MjYsInkiOjE4OC40MTY2NjY2NjY2NjY2M30seyJ4Ijo2NiwieSI6MTg4LjQxNjY2NjY2NjY2NjYzfV0=" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M202,182.8611111111111L234.92893218813452,182.8611111111111Q242,182.8611111111111 242,175.7900432992456L242,82.90440114519876Q242,75.83333333333329 249.07106781186548,75.83333333333329L392.1320571881345,75.83333333333329Q399.203125,75.83333333333329 399.203125,82.90440114519876L399.203125,87.9289321881345Q399.203125,94.99999999999997 406.2741928118655,94.99999999999997L413.703125,94.99999999999997" id="fc-state-edge1" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 327.240966796875 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge1" data-points="W3sieCI6MjAyLCJ5IjoxODIuODYxMTExMTExMTExMX0seyJ4IjoyNDIsInkiOjE4Mi44NjExMTExMTExMTExfSx7IngiOjI0MiwieSI6NzUuODMzMzMzMzMzMzMzMjl9LHsieCI6Mzk5LjIwMzEyNSwieSI6NzUuODMzMzMzMzMzMzMzMjl9LHsieCI6Mzk5LjIwMzEyNSwieSI6OTQuOTk5OTk5OTk5OTk5OTd9LHsieCI6NDE5LjIwMzEyNSwieSI6OTQuOTk5OTk5OTk5OTk5OTd9XQ==" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M419.203125,101.66666666666663L406.2741928118655,101.66666666666663Q399.203125,101.66666666666663 399.203125,108.7377344785321L399.203125,113.76226552146781Q399.203125,120.83333333333329 392.1320571881345,120.83333333333329L269.0710678118655,120.83333333333329Q262,120.83333333333329 262,127.90440114519876L262,178.0122655214678Q262,185.0833333333333 254.92893218813452,185.0833333333333L207.5,185.0833333333333" id="fc-state-edge2" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 284.46319580078125 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge2" data-points="W3sieCI6NDE5LjIwMzEyNSwieSI6MTAxLjY2NjY2NjY2NjY2NjYzfSx7IngiOjM5OS4yMDMxMjUsInkiOjEwMS42NjY2NjY2NjY2NjY2M30seyJ4IjozOTkuMjAzMTI1LCJ5IjoxMjAuODMzMzMzMzMzMzMzMjl9LHsieCI6MjYyLCJ5IjoxMjAuODMzMzMzMzMzMzMzMjl9LHsieCI6MjYyLCJ5IjoxODUuMDgzMzMzMzMzMzMzM30seyJ4IjoyMDIsInkiOjE4NS4wODMzMzMzMzMzMzMzfV0=" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M555.203125,94.99999999999997L568.1320571881345,94.99999999999997Q575.203125,94.99999999999997 575.203125,87.9289321881345L575.203125,82.90440114519876Q575.203125,75.83333333333329 582.2741928118655,75.83333333333329L725.7101821881345,75.83333333333329Q732.78125,75.83333333333329 732.78125,68.76226552146781L732.78125,51.65440114519879Q732.78125,44.583333333333314 739.8523178118655,44.583333333333314L747.28125,44.583333333333314" id="fc-state-edge3" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 231.83822631835938 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge3" data-points="W3sieCI6NTU1LjIwMzEyNSwieSI6OTQuOTk5OTk5OTk5OTk5OTd9LHsieCI6NTc1LjIwMzEyNSwieSI6OTQuOTk5OTk5OTk5OTk5OTd9LHsieCI6NTc1LjIwMzEyNSwieSI6NzUuODMzMzMzMzMzMzMzMjl9LHsieCI6NzMyLjc4MTI1LCJ5Ijo3NS44MzMzMzMzMzMzMzMyOX0seyJ4Ijo3MzIuNzgxMjUsInkiOjQ0LjU4MzMzMzMzMzMzMzMxNH0seyJ4Ijo3NTIuNzgxMjUsInkiOjQ0LjU4MzMzMzMzMzMzMzMxNH1d" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M888.78125,41.25L995.28125,41.25" id="fc-state-edge4" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 106.5 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge4" data-points="W3sieCI6ODg4Ljc4MTI1LCJ5Ijo0MS4yNX0seyJ4IjoxMDAwLjc4MTI1LCJ5Ijo0MS4yNX1d" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M752.78125,37.916666666666686L653.9921875,37.916666666666686L340.6015625,37.916666666666686L229.07106781186548,37.916666666666686Q222,37.916666666666686 222,44.98773447853216L222,173.56782107702338Q222,180.63888888888886 214.92893218813452,180.63888888888886L207.5,180.63888888888886" id="fc-state-edge5" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 682.6751708984375 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge5" data-points="W3sieCI6NzUyLjc4MTI1LCJ5IjozNy45MTY2NjY2NjY2NjY2ODZ9LHsieCI6NjUzLjk5MjE4NzUsInkiOjM3LjkxNjY2NjY2NjY2NjY4Nn0seyJ4IjozNDAuNjAxNTYyNSwieSI6MzcuOTE2NjY2NjY2NjY2Njg2fSx7IngiOjIyMiwieSI6MzcuOTE2NjY2NjY2NjY2Njg2fSx7IngiOjIyMiwieSI6MTgwLjYzODg4ODg4ODg4ODg2fSx7IngiOjIwMiwieSI6MTgwLjYzODg4ODg4ODg4ODg2fV0=" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M555.203125,101.66666666666663L568.1320571881345,101.66666666666663Q575.203125,101.66666666666663 575.203125,108.7377344785321L575.203125,113.76226552146781Q575.203125,120.83333333333329 582.2741928118655,120.83333333333329L725.7101821881345,120.83333333333329Q732.78125,120.83333333333329 732.78125,127.90440114519876L732.78125,145.0122655214678Q732.78125,152.0833333333333 739.8523178118655,152.0833333333333L747.28125,152.0833333333333" id="fc-state-edge6" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 231.8382568359375 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge6" data-points="W3sieCI6NTU1LjIwMzEyNSwieSI6MTAxLjY2NjY2NjY2NjY2NjYzfSx7IngiOjU3NS4yMDMxMjUsInkiOjEwMS42NjY2NjY2NjY2NjY2M30seyJ4Ijo1NzUuMjAzMTI1LCJ5IjoxMjAuODMzMzMzMzMzMzMzMjl9LHsieCI6NzMyLjc4MTI1LCJ5IjoxMjAuODMzMzMzMzMzMzMzMjl9LHsieCI6NzMyLjc4MTI1LCJ5IjoxNTIuMDgzMzMzMzMzMzMzM30seyJ4Ijo3NTIuNzgxMjUsInkiOjE1Mi4wODMzMzMzMzMzMzMzfV0=" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M752.78125,158.74999999999994L653.9921875,158.74999999999994L340.6015625,158.74999999999994L289.0710678118655,158.74999999999994Q282,158.74999999999994 282,165.82106781186542L282,180.23448774369004Q282,187.30555555555551 274.9289321881345,187.30555555555551L207.5,187.30555555555551" id="fc-state-edge7" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 568.508544921875 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge7" data-points="W3sieCI6NzUyLjc4MTI1LCJ5IjoxNTguNzQ5OTk5OTk5OTk5OTR9LHsieCI6NjUzLjk5MjE4NzUsInkiOjE1OC43NDk5OTk5OTk5OTk5NH0seyJ4IjozNDAuNjAxNTYyNSwieSI6MTU4Ljc0OTk5OTk5OTk5OTk0fSx7IngiOjI4MiwieSI6MTU4Ljc0OTk5OTk5OTk5OTk0fSx7IngiOjI4MiwieSI6MTg3LjMwNTU1NTU1NTU1NTUxfSx7IngiOjIwMiwieSI6MTg3LjMwNTU1NTU1NTU1NTUxfV0=" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M202,189.52777777777774L274.9289321881345,189.52777777777774Q282,189.52777777777774 282,196.59884558964322L282,215.9289321881345Q282,222.99999999999997 289.0710678118655,222.99999999999997L392.1320571881345,222.99999999999997Q399.203125,222.99999999999997 399.203125,230.07106781186545L399.203125,235.09559885480115Q399.203125,242.16666666666663 406.2741928118655,242.16666666666663L413.703125,242.16666666666663" id="fc-state-edge8" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 253.6854705810547 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge8" data-points="W3sieCI6MjAyLCJ5IjoxODkuNTI3Nzc3Nzc3Nzc3NzR9LHsieCI6MjgyLCJ5IjoxODkuNTI3Nzc3Nzc3Nzc3NzR9LHsieCI6MjgyLCJ5IjoyMjIuOTk5OTk5OTk5OTk5OTd9LHsieCI6Mzk5LjIwMzEyNSwieSI6MjIyLjk5OTk5OTk5OTk5OTk3fSx7IngiOjM5OS4yMDMxMjUsInkiOjI0Mi4xNjY2NjY2NjY2NjY2M30seyJ4Ijo0MTkuMjAzMTI1LCJ5IjoyNDIuMTY2NjY2NjY2NjY2NjN9XQ==" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M419.203125,248.83333333333331L406.2741928118655,248.83333333333331Q399.203125,248.83333333333331 399.203125,255.9044011451988L399.203125,260.9289321881345Q399.203125,268 392.1320571881345,268L269.0710678118655,268Q262,268 262,260.9289321881345L262,198.82106781186542Q262,191.74999999999994 254.92893218813452,191.74999999999994L207.5,191.74999999999994" id="fc-state-edge9" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 296.46319580078125 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge9" data-points="W3sieCI6NDE5LjIwMzEyNSwieSI6MjQ4LjgzMzMzMzMzMzMzMzMxfSx7IngiOjM5OS4yMDMxMjUsInkiOjI0OC44MzMzMzMzMzMzMzMzMX0seyJ4IjozOTkuMjAzMTI1LCJ5IjoyNjh9LHsieCI6MjYyLCJ5IjoyNjh9LHsieCI6MjYyLCJ5IjoxOTEuNzQ5OTk5OTk5OTk5OTR9LHsieCI6MjAyLCJ5IjoxOTEuNzQ5OTk5OTk5OTk5OTR9XQ==" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M202,193.97222222222217L234.92893218813452,193.97222222222217Q242,193.97222222222217 242,201.04329003408765L242,305.9289321881345Q242,313 249.07106781186548,313L392.1320571881345,313Q399.203125,313 399.203125,320.0710678118655L399.203125,325.09559885480115Q399.203125,332.16666666666663 406.2741928118655,332.16666666666663L413.703125,332.16666666666663" id="fc-state-edge10" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 339.2409973144531 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge10" data-points="W3sieCI6MjAyLCJ5IjoxOTMuOTcyMjIyMjIyMjIyMTd9LHsieCI6MjQyLCJ5IjoxOTMuOTcyMjIyMjIyMjIyMTd9LHsieCI6MjQyLCJ5IjozMTN9LHsieCI6Mzk5LjIwMzEyNSwieSI6MzEzfSx7IngiOjM5OS4yMDMxMjUsInkiOjMzMi4xNjY2NjY2NjY2NjY2M30seyJ4Ijo0MTkuMjAzMTI1LCJ5IjozMzIuMTY2NjY2NjY2NjY2NjN9XQ==" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M419.203125,338.8333333333333L406.2741928118655,338.8333333333333Q399.203125,338.8333333333333 399.203125,345.9044011451988L399.203125,350.9289321881345Q399.203125,358 392.1320571881345,358L229.07106781186548,358Q222,358 222,350.9289321881345L222,203.26551225630988Q222,196.1944444444444 214.92893218813452,196.1944444444444L207.5,196.1944444444444" id="fc-state-edge11" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 382.0187683105469 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge11" data-points="W3sieCI6NDE5LjIwMzEyNSwieSI6MzM4LjgzMzMzMzMzMzMzMzN9LHsieCI6Mzk5LjIwMzEyNSwieSI6MzM4LjgzMzMzMzMzMzMzMzN9LHsieCI6Mzk5LjIwMzEyNSwieSI6MzU4fSx7IngiOjIyMiwieSI6MzU4fSx7IngiOjIyMiwieSI6MTk2LjE5NDQ0NDQ0NDQ0NDR9LHsieCI6MjAyLCJ5IjoxOTYuMTk0NDQ0NDQ0NDQ0NH1d" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/><path d="M1136.78125,41.25L1171.28125,41.25" id="fc-state-edge12" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 34.5 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="edge12" data-points="W3sieCI6MTEzNi43ODEyNSwieSI6NDEuMjV9LHsieCI6MTE3Ni43ODEyNSwieSI6NDEuMjV9XQ==" data-look="neo" marker-end="url(#fc-state_stateDiagram-barbEnd-margin)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(340.6015625, 75.33333333333329)"><g class="label" data-id="edge1" transform="translate(-23.3515625, -12)"><foreignObject width="46.703125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>A 回答</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(340.6015625, 120.33333333333329)"><g class="label" data-id="edge2" transform="translate(-38.6015625, -12)"><foreignObject width="77.203125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>CONTINUE</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(653.9921875, 75.33333333333329)"><g class="label" data-id="edge3" transform="translate(-21.671875, -12)"><foreignObject width="43.34375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>DONE</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(944.78125, 40.75)"><g class="label" data-id="edge4" transform="translate(-16, -12)"><foreignObject width="32" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>通过</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(487.203125, 37.916666666666686)"><g class="label" data-id="edge5" transform="translate(-16, -12)"><foreignObject width="32" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>失败</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(653.9921875, 120.33333333333329)"><g class="label" data-id="edge6" transform="translate(-58.7890625, -12)"><foreignObject width="117.578125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>WAIT_EXTERNAL</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(487.203125, 158.74999999999994)"><g class="label" data-id="edge7" transform="translate(-39.5, -12)"><foreignObject width="79" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>输入 / 恢复</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(340.6015625, 222.49999999999997)"><g class="label" data-id="edge8" transform="translate(-16, -12)"><foreignObject width="32" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>暂停</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(340.6015625, 267.5)"><g class="label" data-id="edge9" transform="translate(-16, -12)"><foreignObject width="32" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>恢复</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(340.6015625, 312.5)"><g class="label" data-id="edge10" transform="translate(-32, -12)"><foreignObject width="64" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>崩溃超限</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(340.6015625, 357.5)"><g class="label" data-id="edge11" transform="translate(-32, -12)"><foreignObject width="64" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>显式恢复</p></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default" id="fc-state-state-root_start-0" data-look="neo" transform="translate(19, 188.41666666666663)"><circle class="state-start" r="7" width="14" height="14"/></g><g class="node active statediagram-state" id="fc-state-state-ACTIVE-11" data-look="neo" transform="translate(134, 188.41666666666663)"><rect class="basic label-container" style="fill:#eef4ff !important;stroke:#1d4ed8 !important" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" style="color:#172033 !important" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div style="color: rgb(23, 32, 51) !important; display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#172033 !important" class="nodeLabel markdown-node-label"><p>ACTIVE</p></span></div></foreignObject></g></g><g class="node judging statediagram-state" id="fc-state-state-JUDGING-6" data-look="neo" transform="translate(487.203125, 98.33333333333331)"><rect class="basic label-container" style="fill:#f4efff !important;stroke:#6d28d9 !important" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" style="color:#172033 !important" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div style="color: rgb(23, 32, 51) !important; display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#172033 !important" class="nodeLabel markdown-node-label"><p>JUDGING</p></span></div></foreignObject></g></g><g class="node verifying statediagram-state" id="fc-state-state-VERIFYING-5" data-look="neo" transform="translate(820.78125, 41.25)"><rect class="basic label-container" style="fill:#f3fcf7 !important;stroke:#22c55e !important" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" style="color:#172033 !important" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div style="color: rgb(23, 32, 51) !important; display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#172033 !important" class="nodeLabel markdown-node-label"><p>VERIFYING</p></span></div></foreignObject></g></g><g class="node done statediagram-state" id="fc-state-state-DONE-12" data-look="neo" transform="translate(1068.78125, 41.25)"><rect class="basic label-container" style="fill:#dcfce7 !important;stroke:#16a34a !important" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" style="color:#14532d !important" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div style="color: rgb(20, 83, 45) !important; display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#14532d !important" class="nodeLabel markdown-node-label"><p>DONE</p></span></div></foreignObject></g></g><g class="node wait statediagram-state" id="fc-state-state-WAIT_EXTERNAL-7" data-look="neo" transform="translate(820.78125, 155.41666666666663)"><rect class="basic label-container" style="fill:#fff2e8 !important;stroke:#fb923c !important" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" style="color:#9a3412 !important" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div style="color: rgb(154, 52, 18) !important; display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#9a3412 !important" class="nodeLabel markdown-node-label"><p>WAIT_EXTERNAL</p></span></div></foreignObject></g></g><g class="node paused statediagram-state" id="fc-state-state-PAUSED-9" data-look="neo" transform="translate(487.203125, 245.49999999999997)"><rect class="basic label-container" style="fill:#f1f5f9 !important;stroke:#94a3b8 !important" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" style="color:#334155 !important" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div style="color: rgb(51, 65, 85) !important; display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#334155 !important" class="nodeLabel markdown-node-label"><p>PAUSED</p></span></div></foreignObject></g></g><g class="node interrupted statediagram-state" id="fc-state-state-INTERRUPTED-11" data-look="neo" transform="translate(487.203125, 335.49999999999994)"><rect class="basic label-container" style="fill:#fdecec !important;stroke:#ef4444 !important" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" style="color:#991b1b !important" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div style="color: rgb(153, 27, 27) !important; display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#991b1b !important" class="nodeLabel markdown-node-label"><p>INTERRUPTED</p></span></div></foreignObject></g></g><g class="node default" id="fc-state-state-root_end-12" data-look="neo" transform="translate(1183.7878966331482, 41.25)"><g class="outer-path"><path d="M7 0 C7 0.40517908122283747, 6.964012880168563 0.816513743121899, 6.893654271085456 1.2155372436685123 C6.823295662002349 1.6145607442151257, 6.716427752933756 2.013397210557766, 6.5778483455013586 2.394141003279681 C6.439268938068961 2.7748847960015954, 6.26476736710249 3.149104622578984, 6.062177826491071 3.4999999999999996 C5.859588285879653 3.8508953774210153, 5.622755194947063 4.189128084166967, 5.362311101832846 4.499513267805774 C5.10186700871863 4.809898451444582, 4.809898451444583 5.10186700871863, 4.499513267805775 5.362311101832846 C4.189128084166968 5.622755194947063, 3.8508953774210166 5.859588285879652, 3.500000000000001 6.06217782649107 C3.149104622578985 6.264767367102489, 2.7748847960015963 6.439268938068961, 2.3941410032796817 6.5778483455013586 C2.013397210557767 6.716427752933756, 1.6145607442151264 6.823295662002349, 1.2155372436685128 6.893654271085456 C0.8165137431218992 6.964012880168563, 0.4051790812228379 7, 4.286263797015736e-16 7 C-0.405179081222837 7, -0.8165137431218985 6.964012880168563, -1.2155372436685121 6.893654271085456 C-1.6145607442151257 6.823295662002349, -2.0133972105577667 6.716427752933756, -2.394141003279681 6.5778483455013586 C-2.774884796001595 6.439268938068961, -3.149104622578983 6.26476736710249, -3.4999999999999982 6.062177826491071 C-3.8508953774210135 5.859588285879653, -4.189128084166966 5.6227551949470636, -4.499513267805773 5.362311101832848 C-4.809898451444581 5.101867008718632, -5.101867008718628 4.809898451444586, -5.3623111018328435 4.499513267805779 C-5.622755194947059 4.189128084166971, -5.859588285879649 3.8508953774210206, -6.062177826491068 3.5000000000000053 C-6.264767367102486 3.14910462257899, -6.439268938068958 2.774884796001602, -6.577848345501356 2.394141003279688 C-6.716427752933754 2.0133972105577738, -6.823295662002347 1.614560744215134, -6.893654271085454 1.215537243668521 C-6.9640128801685615 0.816513743121908, -6.999999999999999 0.4051790812228472, -7 1.0183126166254463e-14 C-7.000000000000001 -0.40517908122282686, -6.964012880168565 -0.8165137431218878, -6.893654271085459 -1.215537243668501 C-6.823295662002352 -1.6145607442151142, -6.716427752933759 -2.0133972105577542, -6.577848345501363 -2.394141003279669 C-6.439268938068967 -2.7748847960015834, -6.264767367102496 -3.149104622578972, -6.062177826491078 -3.4999999999999876 C-5.859588285879661 -3.8508953774210033, -5.6227551949470715 -4.1891280841669545, -5.362311101832856 -4.499513267805763 C-5.10186700871864 -4.809898451444571, -4.809898451444594 -5.10186700871862, -4.499513267805787 -5.362311101832836 C-4.189128084166979 -5.622755194947053, -3.850895377421028 -5.859588285879643, -3.5000000000000133 -6.062177826491062 C-3.1491046225789985 -6.264767367102482, -2.774884796001611 -6.439268938068954, -2.3941410032796973 -6.577848345501353 C-2.0133972105577835 -6.716427752933752, -1.6145607442151435 -6.823295662002345, -1.2155372436685306 -6.893654271085453 C-0.8165137431219176 -6.9640128801685615, -0.40517908122285695 -6.999999999999999, -1.9937625952807352e-14 -7 C0.4051790812228171 -7.000000000000001, 0.8165137431218781 -6.964012880168565, 1.2155372436684913 -6.89365427108546 C1.6145607442151044 -6.823295662002354, 2.013397210557745 -6.716427752933763, 2.3941410032796595 -6.5778483455013665 C2.774884796001574 -6.43926893806897, 3.149104622578963 -6.2647673671025, 3.499999999999979 -6.062177826491083 C3.8508953774209953 -5.859588285879665, 4.189128084166947 -5.622755194947077, 4.499513267805756 -5.362311101832862 C4.809898451444564 -5.1018670087186475, 5.101867008718613 -4.809898451444602, 5.362311101832829 -4.499513267805796 C5.622755194947046 -4.189128084166989, 5.859588285879637 -3.8508953774210393, 6.062177826491056 -3.500000000000025 C6.2647673671024755 -3.1491046225790105, 6.439268938068949 -2.774884796001623, 6.577848345501348 -2.3941410032797092 C6.716427752933747 -2.0133972105577955, 6.823295662002342 -1.6145607442151562, 6.893654271085451 -1.2155372436685434 C6.96401288016856 -0.8165137431219307, 6.982275711847575 -0.2025895406114567, 7 -3.2800750208310675e-14 C7.017724288152425 0.2025895406113911, 7.017724288152424 -0.2025895406114242, 7 0" stroke="none" stroke-width="0" fill="#eee" style=""/><path d="M7 0 C7 0.40517908122283747, 6.964012880168563 0.816513743121899, 6.893654271085456 1.2155372436685123 C6.823295662002349 1.6145607442151257, 6.716427752933756 2.013397210557766, 6.5778483455013586 2.394141003279681 C6.439268938068961 2.7748847960015954, 6.26476736710249 3.149104622578984, 6.062177826491071 3.4999999999999996 C5.859588285879653 3.8508953774210153, 5.622755194947063 4.189128084166967, 5.362311101832846 4.499513267805774 C5.10186700871863 4.809898451444582, 4.809898451444583 5.10186700871863, 4.499513267805775 5.362311101832846 C4.189128084166968 5.622755194947063, 3.8508953774210166 5.859588285879652, 3.500000000000001 6.06217782649107 C3.149104622578985 6.264767367102489, 2.7748847960015963 6.439268938068961, 2.3941410032796817 6.5778483455013586 C2.013397210557767 6.716427752933756, 1.6145607442151264 6.823295662002349, 1.2155372436685128 6.893654271085456 C0.8165137431218992 6.964012880168563, 0.4051790812228379 7, 4.286263797015736e-16 7 C-0.405179081222837 7, -0.8165137431218985 6.964012880168563, -1.2155372436685121 6.893654271085456 C-1.6145607442151257 6.823295662002349, -2.0133972105577667 6.716427752933756, -2.394141003279681 6.5778483455013586 C-2.774884796001595 6.439268938068961, -3.149104622578983 6.26476736710249, -3.4999999999999982 6.062177826491071 C-3.8508953774210135 5.859588285879653, -4.189128084166966 5.6227551949470636, -4.499513267805773 5.362311101832848 C-4.809898451444581 5.101867008718632, -5.101867008718628 4.809898451444586, -5.3623111018328435 4.499513267805779 C-5.622755194947059 4.189128084166971, -5.859588285879649 3.8508953774210206, -6.062177826491068 3.5000000000000053 C-6.264767367102486 3.14910462257899, -6.439268938068958 2.774884796001602, -6.577848345501356 2.394141003279688 C-6.716427752933754 2.0133972105577738, -6.823295662002347 1.614560744215134, -6.893654271085454 1.215537243668521 C-6.9640128801685615 0.816513743121908, -6.999999999999999 0.4051790812228472, -7 1.0183126166254463e-14 C-7.000000000000001 -0.40517908122282686, -6.964012880168565 -0.8165137431218878, -6.893654271085459 -1.215537243668501 C-6.823295662002352 -1.6145607442151142, -6.716427752933759 -2.0133972105577542, -6.577848345501363 -2.394141003279669 C-6.439268938068967 -2.7748847960015834, -6.264767367102496 -3.149104622578972, -6.062177826491078 -3.4999999999999876 C-5.859588285879661 -3.8508953774210033, -5.6227551949470715 -4.1891280841669545, -5.362311101832856 -4.499513267805763 C-5.10186700871864 -4.809898451444571, -4.809898451444594 -5.10186700871862, -4.499513267805787 -5.362311101832836 C-4.189128084166979 -5.622755194947053, -3.850895377421028 -5.859588285879643, -3.5000000000000133 -6.062177826491062 C-3.1491046225789985 -6.264767367102482, -2.774884796001611 -6.439268938068954, -2.3941410032796973 -6.577848345501353 C-2.0133972105577835 -6.716427752933752, -1.6145607442151435 -6.823295662002345, -1.2155372436685306 -6.893654271085453 C-0.8165137431219176 -6.9640128801685615, -0.40517908122285695 -6.999999999999999, -1.9937625952807352e-14 -7 C0.4051790812228171 -7.000000000000001, 0.8165137431218781 -6.964012880168565, 1.2155372436684913 -6.89365427108546 C1.6145607442151044 -6.823295662002354, 2.013397210557745 -6.716427752933763, 2.3941410032796595 -6.5778483455013665 C2.774884796001574 -6.43926893806897, 3.149104622578963 -6.2647673671025, 3.499999999999979 -6.062177826491083 C3.8508953774209953 -5.859588285879665, 4.189128084166947 -5.622755194947077, 4.499513267805756 -5.362311101832862 C4.809898451444564 -5.1018670087186475, 5.101867008718613 -4.809898451444602, 5.362311101832829 -4.499513267805796 C5.622755194947046 -4.189128084166989, 5.859588285879637 -3.8508953774210393, 6.062177826491056 -3.500000000000025 C6.2647673671024755 -3.1491046225790105, 6.439268938068949 -2.774884796001623, 6.577848345501348 -2.3941410032797092 C6.716427752933747 -2.0133972105577955, 6.823295662002342 -1.6145607442151562, 6.893654271085451 -1.2155372436685434 C6.96401288016856 -0.8165137431219307, 6.982275711847575 -0.2025895406114567, 7 -3.2800750208310675e-14 C7.017724288152425 0.2025895406113911, 7.017724288152424 -0.2025895406114242, 7 0" stroke="#666" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="M2.5 0 C2.5 0.14470681472244193, 2.487147457203058 0.29161205111496386, 2.46201938253052 0.4341204441673258 C2.436891307857982 0.5766288372196877, 2.3987241974763416 0.7190704323420595, 2.3492315519647713 0.8550503583141718 C2.299738906453201 0.991030284286284, 2.2374169168223177 1.124680222349637, 2.165063509461097 1.2499999999999998 C2.092710102099876 1.3753197776503625, 2.0081268553382365 1.496117172916774, 1.915111107797445 1.6069690242163481 C1.8220953602566536 1.7178208755159223, 1.7178208755159226 1.8220953602566536, 1.6069690242163484 1.915111107797445 C1.4961171729167742 2.0081268553382365, 1.375319777650363 2.0927101020998755, 1.2500000000000002 2.1650635094610964 C1.1246802223496375 2.2374169168223172, 0.9910302842862845 2.2997389064532, 0.8550503583141721 2.349231551964771 C0.7190704323420597 2.3987241974763416, 0.576628837219688 2.436891307857982, 0.43412044416732604 2.46201938253052 C0.291612051114964 2.487147457203058, 0.14470681472244212 2.5, 1.5308084989341916e-16 2.5 C-0.1447068147224418 2.5, -0.2916120511149638 2.487147457203058, -0.43412044416732576 2.46201938253052 C-0.5766288372196877 2.436891307857982, -0.7190704323420595 2.3987241974763416, -0.8550503583141718 2.3492315519647713 C-0.991030284286284 2.299738906453201, -1.124680222349637 2.2374169168223177, -1.2499999999999996 2.165063509461097 C-1.375319777650362 2.092710102099876, -1.4961171729167733 2.008126855338237, -1.6069690242163475 1.9151111077974459 C-1.7178208755159217 1.8220953602566548, -1.822095360256653 1.7178208755159234, -1.9151111077974443 1.6069690242163495 C-2.0081268553382357 1.4961171729167755, -2.0927101020998746 1.3753197776503645, -2.1650635094610955 1.250000000000002 C-2.2374169168223164 1.1246802223496395, -2.2997389064531992 0.9910302842862865, -2.34923155196477 0.8550503583141743 C-2.3987241974763407 0.7190704323420621, -2.436891307857981 0.5766288372196907, -2.4620193825305194 0.434120444167329 C-2.487147457203058 0.29161205111496724, -2.5 0.14470681472244545, -2.5 3.636830773662308e-15 C-2.5 -0.14470681472243818, -2.4871474572030587 -0.2916120511149599, -2.4620193825305208 -0.4341204441673218 C-2.436891307857983 -0.5766288372196837, -2.398724197476343 -0.7190704323420553, -2.3492315519647726 -0.8550503583141675 C-2.2997389064532023 -0.9910302842862798, -2.23741691682232 -1.1246802223496328, -2.165063509461099 -1.2499999999999956 C-2.092710102099878 -1.3753197776503583, -2.00812685533824 -1.4961171729167695, -1.9151111077974488 -1.606969024216344 C-1.8220953602566576 -1.7178208755159183, -1.7178208755159263 -1.82209536025665, -1.6069690242163523 -1.9151111077974416 C-1.4961171729167784 -2.0081268553382334, -1.3753197776503672 -2.0927101020998724, -1.2500000000000047 -2.1650635094610937 C-1.1246802223496422 -2.237416916822315, -0.9910302842862897 -2.299738906453198, -0.8550503583141776 -2.3492315519647686 C-0.7190704323420656 -2.3987241974763394, -0.5766288372196942 -2.4368913078579806, -0.43412044416733236 -2.462019382530519 C-0.29161205111497057 -2.4871474572030574, -0.1447068147224489 -2.4999999999999996, -7.120580697431198e-15 -2.5 C0.14470681472243463 -2.5000000000000004, 0.29161205111495647 -2.487147457203059, 0.4341204441673183 -2.4620193825305217 C0.5766288372196802 -2.436891307857984, 0.7190704323420518 -2.3987241974763442, 0.8550503583141642 -2.349231551964774 C0.9910302842862766 -2.2997389064532037, 1.1246802223496295 -2.2374169168223212, 1.2499999999999925 -2.165063509461101 C1.3753197776503554 -2.0927101020998804, 1.4961171729167668 -2.008126855338242, 1.6069690242163412 -1.915111107797451 C1.7178208755159157 -1.82209536025666, 1.8220953602566472 -1.7178208755159294, 1.915111107797439 -1.6069690242163557 C2.0081268553382308 -1.496117172916782, 2.09271010209987 -1.3753197776503712, 2.1650635094610915 -1.2500000000000089 C2.237416916822313 -1.1246802223496466, 2.299738906453196 -0.9910302842862939, 2.3492315519647673 -0.855050358314182 C2.3987241974763385 -0.71907043234207, 2.4368913078579792 -0.5766288372196986, 2.462019382530518 -0.4341204441673369 C2.487147457203057 -0.29161205111497523, 2.4936698970884197 -0.07235340736123454, 2.5 -1.1714553645825241e-14 C2.5063301029115803 0.07235340736121111, 2.50633010291158 -0.07235340736122292, 2.5 0" stroke="none" stroke-width="0" fill="#000" style=""/><path d="M2.5 0 C2.5 0.14470681472244193, 2.487147457203058 0.29161205111496386, 2.46201938253052 0.4341204441673258 C2.436891307857982 0.5766288372196877, 2.3987241974763416 0.7190704323420595, 2.3492315519647713 0.8550503583141718 C2.299738906453201 0.991030284286284, 2.2374169168223177 1.124680222349637, 2.165063509461097 1.2499999999999998 C2.092710102099876 1.3753197776503625, 2.0081268553382365 1.496117172916774, 1.915111107797445 1.6069690242163481 C1.8220953602566536 1.7178208755159223, 1.7178208755159226 1.8220953602566536, 1.6069690242163484 1.915111107797445 C1.4961171729167742 2.0081268553382365, 1.375319777650363 2.0927101020998755, 1.2500000000000002 2.1650635094610964 C1.1246802223496375 2.2374169168223172, 0.9910302842862845 2.2997389064532, 0.8550503583141721 2.349231551964771 C0.7190704323420597 2.3987241974763416, 0.576628837219688 2.436891307857982, 0.43412044416732604 2.46201938253052 C0.291612051114964 2.487147457203058, 0.14470681472244212 2.5, 1.5308084989341916e-16 2.5 C-0.1447068147224418 2.5, -0.2916120511149638 2.487147457203058, -0.43412044416732576 2.46201938253052 C-0.5766288372196877 2.436891307857982, -0.7190704323420595 2.3987241974763416, -0.8550503583141718 2.3492315519647713 C-0.991030284286284 2.299738906453201, -1.124680222349637 2.2374169168223177, -1.2499999999999996 2.165063509461097 C-1.375319777650362 2.092710102099876, -1.4961171729167733 2.008126855338237, -1.6069690242163475 1.9151111077974459 C-1.7178208755159217 1.8220953602566548, -1.822095360256653 1.7178208755159234, -1.9151111077974443 1.6069690242163495 C-2.0081268553382357 1.4961171729167755, -2.0927101020998746 1.3753197776503645, -2.1650635094610955 1.250000000000002 C-2.2374169168223164 1.1246802223496395, -2.2997389064531992 0.9910302842862865, -2.34923155196477 0.8550503583141743 C-2.3987241974763407 0.7190704323420621, -2.436891307857981 0.5766288372196907, -2.4620193825305194 0.434120444167329 C-2.487147457203058 0.29161205111496724, -2.5 0.14470681472244545, -2.5 3.636830773662308e-15 C-2.5 -0.14470681472243818, -2.4871474572030587 -0.2916120511149599, -2.4620193825305208 -0.4341204441673218 C-2.436891307857983 -0.5766288372196837, -2.398724197476343 -0.7190704323420553, -2.3492315519647726 -0.8550503583141675 C-2.2997389064532023 -0.9910302842862798, -2.23741691682232 -1.1246802223496328, -2.165063509461099 -1.2499999999999956 C-2.092710102099878 -1.3753197776503583, -2.00812685533824 -1.4961171729167695, -1.9151111077974488 -1.606969024216344 C-1.8220953602566576 -1.7178208755159183, -1.7178208755159263 -1.82209536025665, -1.6069690242163523 -1.9151111077974416 C-1.4961171729167784 -2.0081268553382334, -1.3753197776503672 -2.0927101020998724, -1.2500000000000047 -2.1650635094610937 C-1.1246802223496422 -2.237416916822315, -0.9910302842862897 -2.299738906453198, -0.8550503583141776 -2.3492315519647686 C-0.7190704323420656 -2.3987241974763394, -0.5766288372196942 -2.4368913078579806, -0.43412044416733236 -2.462019382530519 C-0.29161205111497057 -2.4871474572030574, -0.1447068147224489 -2.4999999999999996, -7.120580697431198e-15 -2.5 C0.14470681472243463 -2.5000000000000004, 0.29161205111495647 -2.487147457203059, 0.4341204441673183 -2.4620193825305217 C0.5766288372196802 -2.436891307857984, 0.7190704323420518 -2.3987241974763442, 0.8550503583141642 -2.349231551964774 C0.9910302842862766 -2.2997389064532037, 1.1246802223496295 -2.2374169168223212, 1.2499999999999925 -2.165063509461101 C1.3753197776503554 -2.0927101020998804, 1.4961171729167668 -2.008126855338242, 1.6069690242163412 -1.915111107797451 C1.7178208755159157 -1.82209536025666, 1.8220953602566472 -1.7178208755159294, 1.915111107797439 -1.6069690242163557 C2.0081268553382308 -1.496117172916782, 2.09271010209987 -1.3753197776503712, 2.1650635094610915 -1.2500000000000089 C2.237416916822313 -1.1246802223496466, 2.299738906453196 -0.9910302842862939, 2.3492315519647673 -0.855050358314182 C2.3987241974763385 -0.71907043234207, 2.4368913078579792 -0.5766288372196986, 2.462019382530518 -0.4341204441673369 C2.487147457203057 -0.29161205111497523, 2.4936698970884197 -0.07235340736123454, 2.5 -1.1714553645825241e-14 C2.5063301029115803 0.07235340736121111, 2.50633010291158 -0.07235340736122292, 2.5 0" stroke="#000" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g></g></g></g><defs><filter id="fc-state-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="fc-state-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="fc-state-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="hsl(0, 0%, 83.3333333333%)" stop-opacity="1"/><stop offset="100%" stop-color="hsl(0, 0%, 88.9215686275%)" stop-opacity="1"/></linearGradient></svg>
+    </div>
+    <p class="diagram-note">可选图：用来解释 ACTIVE / JUDGING / VERIFYING / DONE / WAIT_EXTERNAL / PAUSED / INTERRUPTED 之间的关系；小屏可横向滑动。</p>
+  </section>
+
+  <footer class="footer">
+    <p>
+      <a href="./pi-nf-modules.md">深模块设计</a> ·
+      <a href="https://github.com/williamxhero/pi-needs-forever/issues/5">总 SPEC #5</a> ·
+      <a href="../../MIGRATION.md">MIGRATION.md</a>
+    </p>
+    <p>pi-nf · Needs Forever supervision on Pi-Durable</p>
+  </footer>
+
+</div>
+</body>
+</html>
