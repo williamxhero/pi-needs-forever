@@ -74,6 +74,14 @@ export type SupervisionStatus = {
   last_decision: DecisionSummary | null;
   evidence_count: number;
   delivery: DeliveryState | null;
+  judge_usage: {
+    provider: string;
+    model: string;
+    input: number;
+    output: number;
+    cost: number;
+    attempts: number;
+  } | null;
   limits: TaskLimits;
   task_graph: {
     tasks: { id: string; kind: string; status: string }[];

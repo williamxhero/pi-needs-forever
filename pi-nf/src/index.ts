@@ -2,7 +2,7 @@ export { ContractPolicy, contractHash, normalizeContract, readContractFile } fro
 export { Host } from "./host.js";
 export { createSupervisionExtension } from "./tasks/judge.js";
 export { EvidenceBuilder } from "./evidence.js";
-export { FixtureJudge, UnavailableJudge, decisionSchema, decisionSummary, validateDecision } from "./judge.js";
+export { FixtureJudge, JudgeUnavailableError, ModelJudge, UnavailableJudge, decisionSchema, decisionSummary, judgeInstructions, validateDecision } from "./judge.js";
 export { Lease, leasePath } from "./lease.js";
 export { createDefaultModels, resolveModelRef } from "./models.js";
 export { NF_BASE_EXTENSIONS, Supervision, START_REQUEST_PREFIX } from "./supervision.js";
@@ -34,4 +34,4 @@ export type {
   VerifyConfig,
 } from "./types.js";
 export type { EvidenceSnapshot, SnapshotEvidence } from "./evidence.js";
-export type { Decision, DecisionAction, ExternalWait, Judge } from "./judge.js";
+export type { Decision, DecisionAction, ExternalWait, Judge, JudgeUsage, ModelJudgeOptions } from "./judge.js";
