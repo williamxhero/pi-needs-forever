@@ -97,6 +97,13 @@ export type SupervisionStatus = {
     attempts: number;
   } | null;
   verification: VerificationStatus;
+  route: {
+    mode: string;
+    selected_route_id: string | null;
+    candidate_count: number;
+    attempts: number;
+    last_outcome: string | null;
+  };
   limits: TaskLimits;
   task_graph: {
     tasks: { id: string; kind: string; status: string }[];

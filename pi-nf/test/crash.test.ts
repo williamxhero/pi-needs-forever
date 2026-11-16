@@ -26,6 +26,7 @@ function contract(workspace: string): Record<string, unknown> {
     goal: "Survive a crash",
     acceptance: [{ id: "A1", text: "The task can resume" }],
     authorization: "Only edit this workspace",
+    c2: { mode: "legacy" },
     limits: { max_worker_turns: null, max_minutes: null },
   };
 }
