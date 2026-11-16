@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { Host } from "./host.js";
-import { readContractFile } from "./contract.js";
 import { createDefaultModels, resolveModelRef } from "./models.js";
 import type { SupervisionStatus } from "./types.js";
 
@@ -59,13 +57,11 @@ async function main(argv: string[]): Promise<number> {
     if (!values.db) throw new Error("start requires --db <state.sqlite>");
     const models = createDefaultModels();
     const model = resolveModelRef(values.model);
-    const storage = await openNodeSqliteStorage(values.db);
-    const host = await Host.open({
-      storage,
+    const host = await Host.openSqlite({
+      db_path: values.db,
+      contract_path: values.task,
       models,
       model,
-      contract: readContractFile(values.task),
-      db_path: values.db,
     });
     try {
       const receipt = await host.start();

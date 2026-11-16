@@ -18,7 +18,7 @@ import { Lease } from "./lease.js";
 import { createDefaultModels, resolveModelRef } from "./models.js";
 import { NF_BASE_EXTENSIONS, Supervision } from "./supervision.js";
 import { createSupervisionExtension } from "./tasks/judge.js";
-import type { Judge } from "./judge.js";
+import { ModelJudge, type Judge } from "./judge.js";
 import type { PreparedContract, SendReceipt, StartReceipt, SupervisionStatus, TaskContract } from "./types.js";
 
 export type HostOptions = {
@@ -96,6 +96,7 @@ export class Host {
     const model = options.model ?? resolveModelRef();
     const contract = readContractFile(options.contract_path);
     const storage = await openNodeSqliteStorage(options.db_path);
+    const judge = options.judge ?? new ModelJudge(models, { model });
     return Host.open({
       storage,
       models,
@@ -103,7 +104,7 @@ export class Host {
       contract,
       db_path: options.db_path,
       context: options.context,
-      ...(options.judge ? { judge: options.judge } : {}),
+      judge,
     });
   }
 

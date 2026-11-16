@@ -7,7 +7,7 @@ import {
   runEndTask,
 } from "@earendil-works/pi-durable";
 import type { EntryId, Extension } from "@earendil-works/pi-durable";
-import { NfContract, NfControl, NfDirection, NfEvent, NfRound, type DirectionData } from "../docs.js";
+import { NfContract, NfControl, NfDirection, NfEvent, NfRound, NfUsage, type DirectionData } from "../docs.js";
 import { EvidenceBuilder, type EvidenceSnapshot } from "../evidence.js";
 import {
   type Decision,
@@ -34,6 +34,7 @@ export type JudgeState =
 export type JudgeResult = {
   action: DecisionAction | null;
   rejected?: boolean;
+  interrupted?: boolean;
 };
 
 export type SupervisionDependencies = {
@@ -112,10 +113,15 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           decision = validateDecision(await dependencies.judge.decide(checkpoint.snapshot, runtime.signal), checkpoint.snapshot);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+          const rejected = error instanceof JudgeOutputError;
+          const usage = dependencies.judge.lastUsage;
+          const raw = dependencies.judge.lastRawOutput;
           await runtime.commit(async (tx) => {
             const control = await tx.doc(NfControl, runtime.conversationId);
             const round = await tx.doc(NfRound, runtime.conversationId);
-            control.status = "ACTIVE";
+            const usageDoc = await tx.doc(NfUsage, runtime.conversationId);
+            if (usage) usageDoc.judge = { ...usage, updated_at: now() };
+            control.status = rejected ? "ACTIVE" : "INTERRUPTED";
             control.phase = "IDLE";
             control.last_error = message;
             control.updated_at = now();
@@ -123,14 +129,22 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             round.updated_at = now();
             await tx.appendEntry(NfEvent, runtime.conversationId, {
               data: {
-                type: "nf.judge_rejected",
+                type: rejected ? "nf.judge_rejected" : "nf.judge_interrupted",
                 at: now(),
-                details: { round_id: task.input.round_id, error: message },
+                details: {
+                  round_id: task.input.round_id,
+                  error: message,
+                  raw_output: raw?.slice(0, 4_000) ?? null,
+                  usage: usage ?? null,
+                },
               },
             });
             return {
               status: "terminal",
-              outcome: { status: "completed", result: rejectionResult() },
+              outcome: {
+                status: "completed",
+                result: rejected ? rejectionResult() : { action: null, interrupted: true },
+              },
             };
           }, context);
           return;
@@ -143,6 +157,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           throw new Error("nf.judge: cannot create a direction submission without the root conversation.");
         }
         const snapshotId = task.state.checkpoint.snapshot.snapshot_id;
+        const usage = dependencies.judge.lastUsage;
+        const raw = dependencies.judge.lastRawOutput;
         const requestId = directionRequestId(task.input.task_id, task.input.task_version, task.input.round_id);
         const direction: DirectionData = {
           schema_version: 1,
@@ -159,6 +175,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
         await runtime.commit(async (tx) => {
           const control = await tx.doc(NfControl, runtime.conversationId);
           const round = await tx.doc(NfRound, runtime.conversationId);
+          const usageDoc = await tx.doc(NfUsage, runtime.conversationId);
+          if (usage) usageDoc.judge = { ...usage, updated_at: now() };
 
           if (
             control.task_version !== task.input.task_version ||
@@ -215,6 +233,17 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             control.phase = "IDLE";
           }
 
+          await tx.appendEntry(NfEvent, runtime.conversationId, {
+            data: {
+              type: "nf.judge_output",
+              at: now(),
+              details: {
+                round_id: task.input.round_id,
+                raw_output: raw?.slice(0, 4_000) ?? null,
+                usage: usage ?? null,
+              },
+            },
+          });
           await tx.appendEntry(NfEvent, runtime.conversationId, {
             data: {
               type: "nf.decision",

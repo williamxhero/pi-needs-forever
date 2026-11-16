@@ -116,6 +116,29 @@ export type NfEventData = {
 
 export const NfEvent = defineEntry<NfEventData>("nf.event");
 
+export type UsageDoc = {
+  schema_version: 1;
+  judge: {
+    provider: string;
+    model: string;
+    input: number;
+    output: number;
+    cost: number;
+    attempts: number;
+    updated_at: string;
+  } | null;
+};
+
+export const NfUsage = defineDoc<UsageDoc>({
+  kind: "nf.usage",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ schema_version: 1, judge: null }),
+  checkpointWhen: () => true,
+});
+
 export type DirectionData = {
   schema_version: 1;
   round_id: string;

@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { ContractPolicy } from "./contract.js";
-import { NfContract, NfControl, NfEvent, NfRound } from "./docs.js";
+import { NfContract, NfControl, NfEvent, NfRound, NfUsage } from "./docs.js";
 import type {
   ControlPhase,
   ControlStatus,
@@ -155,10 +155,11 @@ export class Supervision {
   }
 
   async inspect(context: Context = BACKGROUND_CONTEXT): Promise<SupervisionStatus> {
-    const [contract, control, round, inspection] = await Promise.all([
+    const [contract, control, round, usage, inspection] = await Promise.all([
       this.harness.snapshot(NfContract, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfControl, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfRound, ROOT_CONVERSATION_ID, context),
+      this.harness.snapshot(NfUsage, ROOT_CONVERSATION_ID, context),
       this.harness.inspect(context),
     ]);
     if (!contract || contract.status !== "ready" || !contract.task) {
@@ -175,6 +176,7 @@ export class Supervision {
       last_decision: control.last_decision,
       evidence_count: round?.evidence_count ?? 0,
       delivery: control.delivery,
+      judge_usage: usage?.judge ?? null,
       limits: contract.task.limits as TaskLimits,
       task_graph: {
         tasks: inspection.tasks.map((task) => ({
