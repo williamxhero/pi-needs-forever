@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues、SPEC 和 tickets 位于 williamxhero/needs-forever，使用 gh CLI 操作。
+Issues、SPEC 和 tickets 位于 williamxhero/pi-needs-forever，使用 gh CLI 操作。
 
 ## Conventions
 

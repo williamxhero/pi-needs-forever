@@ -1,5 +1,7 @@
 # Codex Supervisor v0.1
 
+> **Migration workspace:** this tree is being ported from the Codex Desktop supervisor to **pi-nf**, a supervision layer built on `@earendil-works/pi-durable`. See `MIGRATION.md`. The Codex material below is the source baseline and remains the reference for the original host.
+
 The Needs Forever plugin defaults to supervising the current Desktop main session (#33). That session is worker A; an independent hidden Node.js process B controls synchronous Stop hooks and creates a fresh read-only supervisor C for each judgment. The core's original independent-worker mode remains available for existing checkpoints.
 
 ## Codex plugin
