@@ -73,10 +73,11 @@ The suite uses a faux worker/judge provider and real local verifier/tool subproc
 
 - [x] Implementation and tests on the SPEC integration branch.
 - [x] Standards and Spec review with fixes.
-- [ ] Integration branch merged into `main`.
-- [ ] Temporary worktrees and merged branches removed.
-- [ ] `main` pushed and local/remote equality verified.
-- [ ] Tickets and SPEC #1 closed with this record.
+- [x] Integration branch merged into `main` (`40845ee`).
+- [x] Temporary worktrees and merged branches removed.
+- [x] `main` pushed; local and `origin/main` both resolve to `40845eea7f787d9a16986a74ad4723b827ad152a`.
+- [x] Tickets #6–#11 closed with per-ticket delivery comments.
+- [x] SPEC #1 closed after this record and the completion comment were read back.
 
 ## Process note
 
