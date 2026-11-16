@@ -11,7 +11,7 @@ import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/provid
 import { ROOT_CONVERSATION_ID, type ModelRef } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { readContractFile } from "../src/contract.js";
-import { NfDirection } from "../src/docs.js";
+import { NfDirection, NfVerify } from "../src/docs.js";
 import { Host } from "../src/host.js";
 import { FixtureJudge } from "../src/judge.js";
 
@@ -27,6 +27,23 @@ function contract(workspace: string): Record<string, unknown> {
     acceptance: [{ id: "A1", text: "The task can resume" }],
     authorization: "Only edit this workspace",
     limits: { max_worker_turns: null, max_minutes: null },
+  };
+}
+
+function verifyContract(workspace: string, marker: string): Record<string, unknown> {
+  const verifyPath = join(workspace, "verify.mjs");
+  writeFileSync(verifyPath, `import { writeFileSync } from "node:fs";
+writeFileSync(process.argv[2], "started");
+setTimeout(() => {}, 1500);
+`);
+  return {
+    ...contract(workspace),
+    task_id: "crash-verify-task",
+    verify: {
+      argv: [process.execPath, verifyPath, marker],
+      timeout_seconds: 5,
+      protected_files: ["verify.mjs"],
+    },
   };
 }
 
@@ -202,6 +219,35 @@ test("a crash after a committed direction does not duplicate it", { timeout: 30_
     const directions = entries.items.filter((entry) => NfDirection.is(entry));
     const matching = directions.filter((entry) => entry.data.round_id === originalRound);
     assert.equal(matching.length, 1);
+  } finally {
+    await host.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+
+test("a crash during verification resumes the verify task without duplicating DONE", { timeout: 30_000 }, async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-crash-verify-"));
+  const db = join(workspace, "state.sqlite");
+  const taskPath = join(workspace, "task.json");
+  const marker = join(workspace, "verify-marker");
+  writeFileSync(taskPath, JSON.stringify(verifyContract(workspace, marker)));
+  const child = await startChild(workspace, db, taskPath, marker, "verify");
+  try {
+    await until(async () => existsSync(marker) ? true : undefined);
+  } finally {
+    await killChild(child);
+  }
+  const host = await reopen(db, taskPath);
+  try {
+    const status = await until(async () => {
+      const current = await host.inspect();
+      return current.status === "DONE" ? current : undefined;
+    }, 12_000);
+    assert.equal(status.status, "DONE");
+    assert.equal(status.verification.state, "passed");
+    const verify = await host.harness.snapshot(NfVerify, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
+    assert.equal((verify?.last_result as { passed?: boolean } | null)?.passed, true);
   } finally {
     await host.close();
     rmSync(workspace, { recursive: true, force: true });

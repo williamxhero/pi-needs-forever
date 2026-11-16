@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -13,7 +13,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { Host } from "../src/host.js";
-import { NfContract, NfControl } from "../src/docs.js";
+import { NfContract, NfControl, NfVerify } from "../src/docs.js";
 import { LeaseHeldError } from "../src/types.js";
 
 const MODEL: ModelRef = { provider: "faux", modelId: "faux-model" };
@@ -165,5 +165,77 @@ test("status reads committed state from SQLite without taking the writer lease",
     assert.equal(status.status, "ACTIVE");
   } finally {
     rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test("a verifier contract records a protected baseline before the first run", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-baseline-"));
+  try {
+    const protectedPath = join(workspace, "verify.mjs");
+    writeFileSync(protectedPath, "console.log('ok');\n");
+    const task = {
+      ...contract(workspace, "baseline-task"),
+      verify: {
+        argv: [process.execPath, protectedPath],
+        timeout_seconds: 10,
+        protected_files: ["verify.mjs"],
+      },
+    };
+    const host = await Host.open({
+      storage: new MemoryStorage(),
+      models: fakeModels(),
+      model: MODEL,
+      contract: task,
+      db_path: join(workspace, "state.sqlite"),
+    });
+    try {
+      await host.start();
+      const status = await host.inspect();
+      assert.equal(status.verification.configured, true);
+      assert.equal(status.verification.baseline_count, 1);
+      assert.equal(status.verification.state, "ready");
+      const verify = await host.harness.snapshot(NfVerify, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
+      assert.equal(verify?.baseline?.length, 1);
+      assert.equal(verify?.baseline?.[0]?.path, protectedPath);
+      assert.match(verify?.baseline?.[0]?.sha256 ?? "", /^[0-9a-f]{64}$/);
+    } finally {
+      await host.close();
+    }
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test("a missing or escaping protected file fails start before any run", async () => {
+  const parent = mkdtempSync(join(tmpdir(), "pi-nf-baseline-escape-"));
+  const workspace = join(parent, "workspace");
+  mkdirSync(workspace);
+  const outside = join(parent, "outside.txt");
+  writeFileSync(outside, "outside");
+  try {
+    for (const file of ["missing.txt", "../outside.txt", outside]) {
+      const task = {
+        ...contract(workspace, `baseline-${file}`),
+        verify: {
+          argv: [process.execPath, "verify.mjs"],
+          timeout_seconds: 10,
+          protected_files: [file],
+        },
+      };
+      const host = await Host.open({
+        storage: new MemoryStorage(),
+        models: fakeModels(),
+        model: MODEL,
+        contract: task,
+        db_path: join(parent, "state.sqlite"),
+      });
+      try {
+        await assert.rejects(host.start(), /protected file/);
+      } finally {
+        await host.close();
+      }
+    }
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
   }
 });
