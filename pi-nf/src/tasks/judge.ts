@@ -477,6 +477,27 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           await runtime.commit(async (tx) => {
             const control = await tx.doc(NfControl, runtime.conversationId);
             const round = await tx.doc(NfRound, runtime.conversationId);
+            if (
+              control.task_version !== task.input.task_version ||
+              control.input_epoch !== task.input.input_epoch ||
+              control.status !== "ACTIVE"
+            ) {
+              round.status = "superseded";
+              round.updated_at = now();
+              control.phase = "IDLE";
+              control.updated_at = now();
+              await tx.appendEntry(NfEvent, runtime.conversationId, {
+                data: {
+                  type: "nf.round_superseded",
+                  at: now(),
+                  details: { round_id: task.input.round_id, phase: "after-verification" },
+                },
+              });
+              return {
+                status: "terminal",
+                outcome: { status: "completed", result: { action: null, superseded: true } },
+              };
+            }
             control.last_round_id = task.input.round_id;
             control.last_decision = { action: "DONE", reason: "Independent verification passed." };
             control.last_error = null;

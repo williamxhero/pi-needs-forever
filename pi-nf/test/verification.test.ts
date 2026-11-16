@@ -125,3 +125,52 @@ test("a failed verifier becomes a repair CONTINUE instead of DONE", async () => 
     rmSync(workspace, { recursive: true, force: true });
   }
 });
+
+test("a protected file changed before verification becomes a repair, never DONE", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-verify-protected-"));
+  let release: (() => void) | undefined;
+  let started: (() => void) | undefined;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const began = new Promise<void>((resolve) => { started = resolve; });
+  const judge: Judge = {
+    async decide(snapshot) {
+      started?.();
+      await gate;
+      const evidence = snapshot.evidence[0];
+      if (!evidence) throw new Error("no evidence");
+      return {
+        action: "DONE",
+        reason: "evidence",
+        evidence_ids: [evidence.id],
+        next_message: "",
+        external: null,
+      };
+    },
+  };
+  const host = await Host.open({
+    storage: new MemoryStorage(),
+    models: toolModels(),
+    model: MODEL,
+    contract: contract(workspace, 0),
+    db_path: join(workspace, "state.sqlite"),
+    judge,
+  });
+  try {
+    await host.start();
+    await began;
+    writeFileSync(join(workspace, "verify.mjs"), "process.exit(0); // changed\n");
+    release?.();
+    const status = await until(async () => {
+      const current = await host.inspect();
+      return current.last_decision?.action === "CONTINUE" ? current : undefined;
+    });
+    assert.equal(status.status, "ACTIVE");
+    const verify = await host.harness.snapshot(NfVerify, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
+    const result = verify?.last_result as { passed?: boolean; protected_before?: unknown[] } | null;
+    assert.equal(result?.passed, false);
+    assert.ok((result?.protected_before?.length ?? 0) > 0);
+  } finally {
+    await host.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
