@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -15,12 +16,13 @@ import type {
   ControlPhase,
   ControlStatus,
   PreparedContract,
+  SendReceipt,
   StartInput,
   StartReceipt,
   SupervisionStatus,
   TaskLimits,
 } from "./types.js";
-import { AlreadyStartedError, NotStartedError } from "./types.js";
+import { AlreadyStartedError, NotStartedError, TaskDoneError } from "./types.js";
 
 export const START_REQUEST_PREFIX = "nf:start";
 
@@ -123,6 +125,32 @@ export class Supervision {
       conversation_id: String(root.id),
       submission_id: String(submission.id),
       status: "ACTIVE",
+    };
+  }
+
+  async send(content: string, context: Context = BACKGROUND_CONTEXT, requestId?: string): Promise<SendReceipt> {
+    if (!content.trim()) throw new Error("message must be nonempty.");
+    const root = await this.harness.conversation(ROOT_CONVERSATION_ID, context);
+    if (!root) throw new NotStartedError("pi-nf task has not started.");
+    const result = await root.commit(async (tx) => {
+      const control = await tx.doc(NfControl, root.id);
+      if (control.status === "DONE") throw new TaskDoneError("DONE cannot accept new input.");
+      control.input_epoch += 1;
+      control.updated_at = new Date().toISOString();
+      if (control.status === "WAIT_EXTERNAL") control.status = "ACTIVE";
+      control.phase = "WORKER";
+      const submissionId = await root.submit(tx, {
+        type: "input",
+        content,
+        requestId: requestId ?? `nf:user:${control.task_version}:${control.input_epoch}:${randomUUID()}`,
+      });
+      return { submissionId, input_epoch: control.input_epoch };
+    }, context);
+    this.harness.resume();
+    return {
+      submission_id: String(result.submissionId),
+      input_epoch: result.input_epoch,
+      disposition: "started",
     };
   }
 

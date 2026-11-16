@@ -115,3 +115,17 @@ export type NfEventData = {
 };
 
 export const NfEvent = defineEntry<NfEventData>("nf.event");
+
+export type DirectionData = {
+  schema_version: 1;
+  round_id: string;
+  task_id: string;
+  task_version: number;
+  contract_sha256: string;
+  snapshot_id: string;
+  request_id: string;
+  decision: JsonValue;
+  created_at: string;
+};
+
+export const NfDirection = defineEntry<DirectionData>("nf.direction");

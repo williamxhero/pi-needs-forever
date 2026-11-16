@@ -7,7 +7,7 @@ import {
   runEndTask,
 } from "@earendil-works/pi-durable";
 import type { EntryId, Extension } from "@earendil-works/pi-durable";
-import { NfContract, NfControl, NfEvent, NfRound } from "../docs.js";
+import { NfContract, NfControl, NfDirection, NfEvent, NfRound, type DirectionData } from "../docs.js";
 import { EvidenceBuilder, type EvidenceSnapshot } from "../evidence.js";
 import {
   type Decision,
@@ -45,6 +45,10 @@ const now = (): string => new Date().toISOString();
 
 function rejectionResult(): JudgeResult {
   return { action: null, rejected: true };
+}
+
+export function directionRequestId(taskId: string, taskVersion: number, roundId: string): string {
+  return `nf:direction:${taskId}:${taskVersion}:${roundId}`;
 }
 
 export function createSupervisionExtension(dependencies: SupervisionDependencies): Extension {
@@ -132,27 +136,94 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           return;
         }
 
+        const handle = decision.action === "CONTINUE"
+          ? await runtime.conversation(runtime.conversationId, context)
+          : undefined;
+        if (decision.action === "CONTINUE" && !handle) {
+          throw new Error("nf.judge: cannot create a direction submission without the root conversation.");
+        }
+        const snapshotId = task.state.checkpoint.snapshot.snapshot_id;
+        const requestId = directionRequestId(task.input.task_id, task.input.task_version, task.input.round_id);
+        const direction: DirectionData = {
+          schema_version: 1,
+          round_id: task.input.round_id,
+          task_id: task.input.task_id,
+          task_version: task.input.task_version,
+          contract_sha256: task.input.contract_sha256,
+          snapshot_id: snapshotId,
+          request_id: requestId,
+          decision: decision as unknown as JsonValue,
+          created_at: now(),
+        };
+
         await runtime.commit(async (tx) => {
           const control = await tx.doc(NfControl, runtime.conversationId);
           const round = await tx.doc(NfRound, runtime.conversationId);
+
+          if (
+            control.task_version !== task.input.task_version ||
+            control.input_epoch !== task.input.input_epoch
+          ) {
+            round.status = "superseded";
+            round.updated_at = now();
+            control.phase = "IDLE";
+            control.updated_at = now();
+            await tx.appendEntry(NfEvent, runtime.conversationId, {
+              data: {
+                type: "nf.round_superseded",
+                at: now(),
+                details: {
+                  round_id: task.input.round_id,
+                  task_version: task.input.task_version,
+                  input_epoch: task.input.input_epoch,
+                  current_task_version: control.task_version,
+                  current_input_epoch: control.input_epoch,
+                },
+              },
+            });
+            return {
+              status: "terminal",
+              outcome: { status: "completed", result: { action: null, superseded: true } },
+            };
+          }
+
           control.last_round_id = task.input.round_id;
           control.last_decision = decisionSummary(decision);
           control.last_error = null;
-          control.phase = "IDLE";
-          control.status =
-            decision.action === "DONE" ? "DONE" : decision.action === "WAIT_EXTERNAL" ? "WAIT_EXTERNAL" : "ACTIVE";
           control.updated_at = now();
           round.status = "decided";
           round.decision = decision as unknown as JsonValue;
           round.updated_at = now();
+
+          if (decision.action === "CONTINUE") {
+            const submissionId = await handle!.submit(tx, {
+              type: "input",
+              content: decision.next_message,
+              entry: { kind: NfDirection.kind, data: direction },
+              requestId,
+            });
+            control.delivery = {
+              stage: "submitted",
+              submission_id: String(submissionId),
+              round_id: task.input.round_id,
+            };
+            control.status = "ACTIVE";
+            control.phase = "WORKER";
+          } else {
+            control.delivery = null;
+            control.status = decision.action === "DONE" ? "DONE" : "WAIT_EXTERNAL";
+            control.phase = "IDLE";
+          }
+
           await tx.appendEntry(NfEvent, runtime.conversationId, {
             data: {
               type: "nf.decision",
               at: now(),
               details: {
                 round_id: task.input.round_id,
-                snapshot_id: task.state.checkpoint.snapshot.snapshot_id,
+                snapshot_id: snapshotId,
                 decision: decision as unknown as JsonValue,
+                delivery: control.delivery,
               },
             },
           });
