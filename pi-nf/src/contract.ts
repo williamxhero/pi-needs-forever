@@ -68,6 +68,8 @@ function limits(value: unknown): TaskLimits {
   return {
     max_worker_turns: integerOrNull(raw.max_worker_turns, "limits.max_worker_turns"),
     max_minutes: minutesOrNull(raw.max_minutes, "limits.max_minutes"),
+    max_tokens: integerOrNull(raw.max_tokens ?? null, "limits.max_tokens"),
+    max_cost: minutesOrNull(raw.max_cost ?? null, "limits.max_cost"),
   };
 }
 
@@ -133,6 +135,8 @@ export function contractHash(task: TaskContract): string {
     limits: {
       max_worker_turns: task.limits.max_worker_turns,
       max_minutes: task.limits.max_minutes,
+      max_tokens: task.limits.max_tokens,
+      max_cost: task.limits.max_cost,
     },
     ...(task.verify
       ? {

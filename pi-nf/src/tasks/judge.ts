@@ -9,7 +9,7 @@ import {
 import type { EntryId, Extension, TaskId } from "@earendil-works/pi-durable";
 import { NfContract, NfControl, NfDirection, NfEvent, NfRoute, NfRound, NfUsage, NfVerify, type DirectionData } from "../docs.js";
 import { EvidenceBuilder, type EvidenceSnapshot } from "../evidence.js";
-import type { ProtectedBaseline } from "../types.js";
+import type { ProtectedBaseline, TaskLimits } from "../types.js";
 import type { VerificationResult } from "../verify.js";
 import { verifyTask, type VerifyOutcome } from "./verify.js";
 import { RoutePolicy, ingestInventoryFromEvidence, type C2Mode } from "../routes.js";
@@ -31,6 +31,7 @@ export type JudgeInput = {
   contract_sha256: string;
   verify_configured: boolean;
   c2_mode: C2Mode;
+  limits: TaskLimits;
 };
 
 export type JudgeState =
@@ -55,6 +56,34 @@ const now = (): string => new Date().toISOString();
 
 export function directionRequestId(taskId: string, taskVersion: number, roundId: string): string {
   return `nf:direction:${taskId}:${taskVersion}:${roundId}`;
+}
+
+function activeSeconds(control: { active_seconds: number; active_started_at: string | null }, nowMs = Date.now()): number {
+  return control.active_seconds + (control.active_started_at ? Math.max(0, (nowMs - Date.parse(control.active_started_at)) / 1000) : 0);
+}
+
+function limitReason(
+  limits: TaskLimits,
+  control: { worker_turns: number; active_seconds: number; active_started_at: string | null },
+  usage: { judge?: { input: number; output: number; cost: number } | null } | null,
+): string | null {
+  const turns = control.worker_turns;
+  const active = activeSeconds(control);
+  const tokens = usage?.judge ? usage.judge.input + usage.judge.output : 0;
+  const cost = usage?.judge?.cost ?? 0;
+  if (limits.max_worker_turns !== null && limits.max_worker_turns !== undefined && turns >= limits.max_worker_turns) {
+    return `worker turn limit reached (${turns}/${limits.max_worker_turns})`;
+  }
+  if (limits.max_minutes !== null && limits.max_minutes !== undefined && active >= limits.max_minutes * 60) {
+    return `active time limit reached (${Math.floor(active)}s/${limits.max_minutes * 60}s)`;
+  }
+  if (limits.max_tokens !== null && limits.max_tokens !== undefined && tokens >= limits.max_tokens) {
+    return `judge token limit reached (${tokens}/${limits.max_tokens})`;
+  }
+  if (limits.max_cost !== null && limits.max_cost !== undefined && cost >= limits.max_cost) {
+    return `judge cost limit reached (${cost}/${limits.max_cost})`;
+  }
+  return null;
 }
 
 function repairMessage(result: VerificationResult | { error: string }, baseline: readonly ProtectedBaseline[]): string {
@@ -214,6 +243,26 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+          const currentControl = await runtime.snapshot(NfControl, runtime.conversationId, context);
+          if (currentControl?.status !== "ACTIVE") {
+            await runtime.commit(async (tx) => {
+              const round = await tx.doc(NfRound, runtime.conversationId);
+              round.status = "interrupted";
+              round.updated_at = now();
+              await tx.appendEntry(NfEvent, runtime.conversationId, {
+                data: {
+                  type: "nf.stale_judge_ignored",
+                  at: now(),
+                  details: { round_id: task.input.round_id, status: currentControl?.status ?? null },
+                },
+              });
+              return {
+                status: "terminal",
+                outcome: { status: "completed", result: { action: null, stale: true } },
+              };
+            }, context);
+            return;
+          }
           const rejected = error instanceof JudgeOutputError;
           const checkpoint = task.state.checkpoint;
           const usage = dependencies.judge.lastUsage;
@@ -298,7 +347,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             if (usage) usageDoc.judge = { ...usage, updated_at: now() };
             if (
               control.task_version !== task.input.task_version ||
-              control.input_epoch !== task.input.input_epoch
+              control.input_epoch !== task.input.input_epoch ||
+              control.status !== "ACTIVE"
             ) {
               round.status = "superseded";
               round.updated_at = now();
@@ -335,6 +385,9 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
                 outcome: { status: "completed", result: { action: null, interrupted: true } },
               };
             }
+            control.worker_turns += 1;
+            control.active_seconds = activeSeconds(control);
+            control.active_started_at = now();
             const verifyTaskId = await tx.createTask(
               verifyTask,
               {
@@ -428,7 +481,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
 
           if (
             control.task_version !== task.input.task_version ||
-            control.input_epoch !== task.input.input_epoch
+            control.input_epoch !== task.input.input_epoch ||
+            control.status !== "ACTIVE"
           ) {
             round.status = "superseded";
             round.updated_at = now();
@@ -453,6 +507,41 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             };
           }
 
+          const active = activeSeconds(control);
+          control.worker_turns += 1;
+          const reason = decision.action === "CONTINUE" ? limitReason(task.input.limits, control, usageDoc) : null;
+          if (reason) {
+            control.status = "PAUSED";
+            control.phase = "IDLE";
+            control.pause_reason = "user_limit";
+            control.limit_reason = reason;
+            control.active_seconds = active;
+            control.active_started_at = null;
+            control.delivery = null;
+            control.last_route_id = null;
+            control.last_plan_id = null;
+            control.last_decision = null;
+            control.task_version += 1;
+            control.updated_at = now();
+            round.status = "decided";
+            round.decision = decision as unknown as JsonValue;
+            round.updated_at = now();
+            routeDoc.execution = null;
+            routeDoc.updated_at = now();
+            await tx.appendEntry(NfEvent, runtime.conversationId, {
+              data: {
+                type: "nf.limit_reached",
+                at: now(),
+                details: { round_id: task.input.round_id, reason },
+              },
+            });
+            return {
+              status: "terminal",
+              outcome: { status: "completed", result: { action: null, limit: true } },
+            };
+          }
+          control.active_seconds = active;
+          control.active_started_at = decision.action === "CONTINUE" ? now() : null;
           routeDoc.execution = routeExecution;
           routeDoc.updated_at = now();
           control.last_route_id = routeExecution?.route_id ?? control.last_route_id;
@@ -574,6 +663,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
               };
             }
             control.last_round_id = task.input.round_id;
+            control.active_seconds = activeSeconds(control);
+            control.active_started_at = null;
             control.last_decision = { action: "DONE", reason: "Independent verification passed." };
             control.last_error = null;
             control.last_route_id = null;
@@ -637,7 +728,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           const round = await tx.doc(NfRound, runtime.conversationId);
           if (
             control.task_version !== task.input.task_version ||
-            control.input_epoch !== task.input.input_epoch
+            control.input_epoch !== task.input.input_epoch ||
+            control.status !== "ACTIVE"
           ) {
             round.status = "superseded";
             round.updated_at = now();
@@ -655,6 +747,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             requestId,
           });
           control.last_round_id = task.input.round_id;
+          control.active_seconds = activeSeconds(control);
+          control.active_started_at = now();
           control.last_decision = decisionSummary(repair);
           control.last_error = null;
           control.last_route_id = null;
@@ -735,6 +829,7 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
                 contract_sha256: contract.contract_sha256,
                 verify_configured: Boolean(contract.task.verify),
                 c2_mode: contract.task.c2?.mode ?? "enforce",
+                limits: contract.task.limits,
               }),
             ],
           };

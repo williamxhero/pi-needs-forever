@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { Host } from "./host.js";
+import { startWebServer } from "./web.js";
 import { createDefaultModels, resolveModelRef } from "./models.js";
 import type { SupervisionStatus } from "./types.js";
 
@@ -27,6 +28,9 @@ Usage:
   pi-nf start --task <contract.json> --db <state.sqlite> [--model provider/model] [--json]
   pi-nf status --db <state.sqlite> [--json]
   pi-nf send --db <state.sqlite> --message <text> [--request-id <id>] [--model provider/model] [--json]
+  pi-nf pause --db <state.sqlite> [--json]
+  pi-nf resume --db <state.sqlite> [--model provider/model] [--json]
+  pi-nf web --db <state.sqlite> [--port 8787]
 `);
 }
 
@@ -41,6 +45,7 @@ async function main(argv: string[]): Promise<number> {
       "judge-model": { type: "string" },
       message: { type: "string" },
       "request-id": { type: "string" },
+      port: { type: "string" },
       json: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -55,6 +60,34 @@ async function main(argv: string[]): Promise<number> {
     const status = await Host.status(values.db);
     if (values.json) console.log(JSON.stringify(status, null, 2));
     else printStatus(status);
+    return 0;
+  }
+  if (command === "web") {
+    if (!values.db) throw new Error("web requires --db <state.sqlite>");
+    const port = values.port ? Number(values.port) : 8787;
+    const server = await startWebServer({ db_path: values.db, port });
+    console.log(`pi-nf web: ${server.url}`);
+    await new Promise<void>((resolve) => {
+      process.once("SIGINT", resolve);
+      process.once("SIGTERM", resolve);
+    });
+    await server.close();
+    return 0;
+  }
+  if (command === "pause" || command === "resume") {
+    if (!values.db) throw new Error(`${command} requires --db <state.sqlite>`);
+    const models = createDefaultModels();
+    const model = resolveModelRef(values.model);
+    const host = await Host.openExisting(values.db, { models, model });
+    try {
+      const status = command === "pause" ? await host.pause() : await host.resume();
+      if (command === "resume") await host.waitForIdle();
+      const finalStatus = command === "resume" ? await host.inspect() : status;
+      if (values.json) console.log(JSON.stringify(finalStatus, null, 2));
+      else printStatus(finalStatus);
+    } finally {
+      await host.close();
+    }
     return 0;
   }
   if (command === "send") {

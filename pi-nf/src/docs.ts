@@ -67,6 +67,8 @@ export type ControlDoc = {
   delivery: DeliveryState | null;
   last_error: string | null;
   pause_reason: string | null;
+  active_started_at: string | null;
+  limit_reason: string | null;
   updated_at: string;
 };
 
@@ -91,6 +93,8 @@ export const NfControl = defineDoc<ControlDoc>({
     delivery: null,
     last_error: null,
     pause_reason: null,
+    active_started_at: null,
+    limit_reason: null,
     updated_at: "",
   }),
   checkpointWhen: () => true,

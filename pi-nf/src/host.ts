@@ -14,7 +14,7 @@ import {
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { ContractPolicy, readContractFile } from "./contract.js";
-import { NfContract } from "./docs.js";
+import { NfContract, NfControl, NfEvent } from "./docs.js";
 import type { EvidenceBuilder } from "./evidence.js";
 import { Lease } from "./lease.js";
 import { createDefaultModels, resolveModelRef } from "./models.js";
@@ -63,6 +63,7 @@ export class Host {
     const prepared = new ContractPolicy().prepare(options.contract);
     const lease = Lease.acquire(prepared.task, options.db_path ?? `memory:${prepared.task.task_id}`);
     let harness: Harness;
+    let hostRef: Host | undefined;
     const reports: Report[] = [];
     try {
       const extensions = options.judge
@@ -77,7 +78,12 @@ export class Host {
           registry,
           settings: { extensions },
           env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? prepared.task.workspace }),
-          onReport: (report) => reports.push(report),
+          onReport: (report) => {
+            reports.push(report);
+            if (hostRef && (report.kind === "task_interrupted" || (report.kind === "task_faulted" && report.reason === "restart_limit"))) {
+              void hostRef.markInterrupted(`${report.kind}:${report.kind === "task_faulted" ? report.reason : "restart_limit"}`).catch(() => {});
+            }
+          },
         },
         context,
       );
@@ -165,6 +171,34 @@ export class Host {
 
   async send(content: string, requestId?: string): Promise<SendReceipt> {
     return this.supervision.send(content, this.context, requestId);
+  }
+
+  async pause(reason: "user" | "user_limit" = "user"): Promise<SupervisionStatus> {
+    return this.supervision.pause(reason, this.context);
+  }
+
+  async resume(): Promise<SupervisionStatus> {
+    return this.supervision.resume(this.context);
+  }
+
+  async markInterrupted(reason: string): Promise<void> {
+    const root = await this.harness.conversation(ROOT_CONVERSATION_ID, this.context);
+    if (!root) return;
+    await root.commit(async (tx) => {
+      const control = await tx.doc(NfControl, root.id);
+      if (control.status === "DONE" || control.status === "PAUSED" || control.status === "INTERRUPTED") return;
+      control.active_seconds += control.active_started_at ? Math.max(0, (Date.now() - Date.parse(control.active_started_at)) / 1000) : 0;
+      control.active_started_at = null;
+      control.status = "INTERRUPTED";
+      control.phase = "IDLE";
+      control.last_error = reason;
+      control.delivery = null;
+      control.updated_at = new Date().toISOString();
+      await tx.appendEntry(NfEvent, root.id, {
+        data: { type: "nf.interrupted", at: new Date().toISOString(), details: { reason } },
+      });
+    }, this.context).catch(() => {});
+    await root.abort(this.context).catch(() => {});
   }
 
   async inspect(): Promise<SupervisionStatus> {
