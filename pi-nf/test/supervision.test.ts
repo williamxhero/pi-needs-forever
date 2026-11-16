@@ -44,7 +44,7 @@ function contract(workspace: string): Record<string, unknown> {
   };
 }
 
-test("afterRun creates one judge task and records a CONTINUE decision without delivering it", async () => {
+test("afterRun creates one judge task and records a CONTINUE decision", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "pi-nf-judge-"));
   const host = await Host.open({
     storage: new MemoryStorage(),
@@ -62,14 +62,18 @@ test("afterRun creates one judge task and records a CONTINUE decision without de
   });
   try {
     await host.start();
-    await host.waitForIdle();
-    const status = await host.inspect();
+    const deadline = Date.now() + 5_000;
+    let status = await host.inspect();
+    while (status.last_decision?.action !== "CONTINUE" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      status = await host.inspect();
+    }
     assert.equal(status.status, "ACTIVE");
     assert.equal(status.last_decision?.action, "CONTINUE");
     assert.equal(status.last_round?.round_id !== undefined, true);
     const control = await host.harness.snapshot(NfControl, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
     assert.equal(control?.last_decision?.action, "CONTINUE");
-    assert.equal(control?.phase, "IDLE");
+    assert.equal(control?.delivery?.stage, "submitted");
     const round = await host.harness.snapshot(NfRound, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
     assert.equal(round?.status, "decided");
     assert.equal(round?.evidence_count, 0);

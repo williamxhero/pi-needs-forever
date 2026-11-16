@@ -19,7 +19,7 @@ import { createDefaultModels, resolveModelRef } from "./models.js";
 import { NF_BASE_EXTENSIONS, Supervision } from "./supervision.js";
 import { createSupervisionExtension } from "./tasks/judge.js";
 import type { Judge } from "./judge.js";
-import type { PreparedContract, StartReceipt, SupervisionStatus, TaskContract } from "./types.js";
+import type { PreparedContract, SendReceipt, StartReceipt, SupervisionStatus, TaskContract } from "./types.js";
 
 export type HostOptions = {
   storage: Storage;
@@ -109,6 +109,10 @@ export class Host {
 
   async start(initialMessage?: string): Promise<StartReceipt> {
     return this.supervision.start({ prepared: this.prepared, initial_message: initialMessage }, this.context);
+  }
+
+  async send(content: string, requestId?: string): Promise<SendReceipt> {
+    return this.supervision.send(content, this.context, requestId);
   }
 
   async inspect(): Promise<SupervisionStatus> {

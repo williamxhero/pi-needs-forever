@@ -11,6 +11,7 @@ export {
   ContractError,
   LeaseHeldError,
   NotStartedError,
+  TaskDoneError,
   VerifierUnsupportedError,
 } from "./types.js";
 export type {
@@ -25,6 +26,7 @@ export type {
   ModelRef,
   PreparedContract,
   StartInput,
+  SendReceipt,
   StartReceipt,
   SupervisionStatus,
   TaskContract,

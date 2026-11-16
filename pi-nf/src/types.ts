@@ -94,6 +94,12 @@ export type StartInput = {
   initial_message?: string;
 };
 
+export type SendReceipt = {
+  submission_id: string;
+  input_epoch: number;
+  disposition: "started" | "queued";
+};
+
 export class ContractError extends Error {
   override name = "ContractError";
 }
@@ -112,6 +118,10 @@ export class AlreadyStartedError extends Error {
 
 export class NotStartedError extends Error {
   override name = "NotStartedError";
+}
+
+export class TaskDoneError extends Error {
+  override name = "TaskDoneError";
 }
 
 export type HostStartOptions = {
