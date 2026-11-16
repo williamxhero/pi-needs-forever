@@ -264,6 +264,9 @@ export function validateC2Decision(decision: Decision, context: C2Context, curre
   }
   const diagnosis = record(decision.diagnosis, "diagnosis");
   exact(diagnosis, ["class", "statement", "evidence_ids"]);
+  if (!["provider_limit", "authentication", "implementation", "evidence_gap", "external_dependency", "unknown"].includes(String(diagnosis.class))) {
+    throw new JudgeOutputError("diagnosis.class is invalid.");
+  }
   nonEmpty(diagnosis.statement, "diagnosis.statement");
   const known = knownEvidence(context, currentEvidence);
   ids(diagnosis.evidence_ids, "diagnosis.evidence_ids", known);
