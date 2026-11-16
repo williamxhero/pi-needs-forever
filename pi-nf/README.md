@@ -16,12 +16,28 @@ It is a standalone host, not a Codex plugin and not a Pi coding-agent extension.
 - Human input increments an `input_epoch`; a direction that becomes stale during judging is marked superseded and is not delivered.
 - A killed host can reopen the same SQLite database, reclaim a stale lease, resume `nf.judge`, and avoid duplicating a committed direction.
 - `status` is a read-only projection; `send` is a one-shot human input path when no writer holds the lease. `send` rejects DONE and INTERRUPTED until an explicit resume exists.
+- Contracts may configure a fixed-argv verifier with protected files. DONE waits for `nf.verify`; a failed gate returns a repair CONTINUE with the actual evidence.
+
+## Verification gate
+
+A contract may configure a fixed argv verifier and protected files:
+
+```json
+"verify": {
+  "argv": ["node", "verify.mjs"],
+  "timeout_seconds": 120,
+  "protected_files": ["verify.mjs", "test/acceptance.test.js"]
+}
+```
+
+At `start`, pi-nf records each protected file's SHA-256 and original content before A's first run. When C returns DONE, `nf.verify` runs the argv directly through the task's `ExecutionEnv` (no shell), checks protected files and a workspace digest before/after, and only then allows DONE. A changed protected file, a verifier failure/timeout, or a workspace change during verification becomes a repair CONTINUE with the actual evidence and original protected content. Missing protected files fail `start`; a partial baseline is never treated as a pass.
+
+`argv` should use an absolute executable or a command available on the execution environment's PATH. `timeout_seconds` is passed to the environment as seconds. The local `NodeExecutionEnv` is a cooperative process boundary, not an OS sandbox.
 
 ## Not in this build
 
 These are later SPECs, not hidden behavior:
 
-- **Independent verification gate** (SPEC 2): contracts with `verify` are rejected for now.
 - **C2 route planning** (SPEC 3): only `c2: { "mode": "legacy" }` is accepted.
 - **Pause/resume, cumulative limits, crash-loop interruption, web UI** (SPEC 4): limits are stored but not enforced yet; pause/resume is not exposed.
 - Migrating old Codex `state.json`, thread IDs or event logs.
@@ -87,7 +103,7 @@ from the worker.
 
 ## Testing boundary
 
-`npm test` exercises the host seam (`start` / `send` / `status` / durable docs / task graph) with a faux worker and judge. The verifier, C2 routes, pause/resume and the web UI are intentionally absent from this build. The design and migration context are in:
+`npm test` exercises the host seam (`start` / `send` / `status` / durable docs / task graph) with a faux worker and judge. Verification subprocesses are real local processes; C2 routes, pause/resume and the web UI are intentionally absent from this build. The design and migration context are in:
 
 - [`docs/design/pi-nf-modules.md`](../docs/design/pi-nf-modules.md)
 - [`docs/design/pi-nf-architecture.html`](../docs/design/pi-nf-architecture.html)

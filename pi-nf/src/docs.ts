@@ -116,6 +116,24 @@ export type NfEventData = {
 
 export const NfEvent = defineEntry<NfEventData>("nf.event");
 
+export type VerifyDoc = {
+  schema_version: 1;
+  baseline: import("./types.js").ProtectedBaseline[] | null;
+  state_path: string | null;
+  last_result: JsonValue | null;
+  updated_at: string;
+};
+
+export const NfVerify = defineDoc<VerifyDoc>({
+  kind: "nf.verify",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ schema_version: 1, baseline: null, state_path: null, last_result: null, updated_at: "" }),
+  checkpointWhen: () => true,
+});
+
 export type UsageDoc = {
   schema_version: 1;
   judge: {

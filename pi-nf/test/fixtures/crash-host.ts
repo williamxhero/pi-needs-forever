@@ -12,7 +12,7 @@ import type { Judge } from "../../src/judge.js";
 const db = process.env.NF_DB!;
 const taskPath = process.env.NF_TASK!;
 const marker = process.env.NF_MARKER!;
-const mode = process.env.NF_MODE as "snapshot" | "judge" | "delivery";
+const mode = process.env.NF_MODE as "snapshot" | "judge" | "delivery" | "verify";
 const model: ModelRef = { provider: "faux", modelId: "faux-model" };
 
 class BlockingEvidence extends EvidenceBuilder {
@@ -26,6 +26,20 @@ const blockingJudge: Judge = {
   async decide() {
     writeFileSync(marker, "judge");
     return new Promise<never>(() => {});
+  },
+};
+
+const doneJudge: Judge = {
+  async decide(snapshot) {
+    const evidence = snapshot.evidence[0];
+    if (!evidence) throw new Error("crash fixture verifier has no evidence");
+    return {
+      action: "DONE",
+      reason: "crash fixture verification evidence",
+      evidence_ids: [evidence.id],
+      next_message: "",
+      external: null,
+    };
   },
 };
 
@@ -44,7 +58,10 @@ const continueJudge: Judge = {
 const models = createModels();
 const faux = fauxProvider({ models: [{ id: "faux-model", name: "Faux Model" }] });
 models.setProvider(faux.provider);
-faux.setResponses([
+faux.setResponses(mode === "verify" ? [
+  fauxAssistantMessage([fauxToolCall("bash", { command: "echo evidence" })], { stopReason: "toolUse" }),
+  fauxAssistantMessage("Verification answer."),
+] : [
   fauxAssistantMessage("First answer."),
   fauxAssistantMessage([fauxToolCall("bash", { command: "echo resumed" })], { stopReason: "toolUse" }),
   fauxAssistantMessage("Second answer."),
@@ -58,7 +75,7 @@ const host = await Host.open({
   model,
   contract: readContractFile(taskPath),
   db_path: db,
-  judge: mode === "delivery" ? continueJudge : blockingJudge,
+  judge: mode === "delivery" ? continueJudge : mode === "verify" ? doneJudge : blockingJudge,
   ...(mode === "snapshot" ? { evidence: new BlockingEvidence() } : {}),
   context: BACKGROUND_CONTEXT,
 });

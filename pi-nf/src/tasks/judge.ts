@@ -6,9 +6,12 @@ import {
   hook,
   runEndTask,
 } from "@earendil-works/pi-durable";
-import type { EntryId, Extension } from "@earendil-works/pi-durable";
-import { NfContract, NfControl, NfDirection, NfEvent, NfRound, NfUsage, type DirectionData } from "../docs.js";
+import type { EntryId, Extension, TaskId } from "@earendil-works/pi-durable";
+import { NfContract, NfControl, NfDirection, NfEvent, NfRound, NfUsage, NfVerify, type DirectionData } from "../docs.js";
 import { EvidenceBuilder, type EvidenceSnapshot } from "../evidence.js";
+import type { ProtectedBaseline } from "../types.js";
+import type { VerificationResult } from "../verify.js";
+import { verifyTask, type VerifyOutcome } from "./verify.js";
 import {
   type Decision,
   type DecisionAction,
@@ -25,11 +28,13 @@ export type JudgeInput = {
   run: { first: EntryId; answer: EntryId; last: EntryId };
   input_epoch: number;
   contract_sha256: string;
+  verify_configured: boolean;
 };
 
 export type JudgeState =
   | { phase: "snapshot" }
-  | { phase: "judge"; snapshot: EvidenceSnapshot; attempt: number };
+  | { phase: "judge"; snapshot: EvidenceSnapshot; attempt: number }
+  | { phase: "verify"; snapshot: EvidenceSnapshot; decision: Decision; verifyTaskId: TaskId<VerifyOutcome> };
 
 export type JudgeResult = {
   action: DecisionAction | null;
@@ -49,12 +54,49 @@ export function directionRequestId(taskId: string, taskVersion: number, roundId:
   return `nf:direction:${taskId}:${taskVersion}:${roundId}`;
 }
 
+function repairMessage(result: VerificationResult | { error: string }, baseline: readonly ProtectedBaseline[]): string {
+  if ("error" in result) {
+    return `Independent verification could not run: ${result.error}. Fix the verifier environment or protected baseline, then rerun the fixed command.`;
+  }
+  const changed = [...result.protected_before, ...result.protected_after];
+  const originals = baseline
+    .filter((file) => changed.some((entry) => entry.path === file.path))
+    .map((file) => ({ path: file.path, content_base64: file.content_base64 }));
+  const detail = {
+    argv: result.argv,
+    exit_code: result.exit_code,
+    timed_out: result.timed_out,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    protected_before: result.protected_before,
+    protected_after: result.protected_after,
+    workspace_changed: result.workspace_changed,
+    original_protected: originals,
+  };
+  const text = `Independent verification failed. Repair the task and restore any changed protected files; keep the fixed argv unchanged, then rerun concise acceptance checks. Evidence: ${JSON.stringify(detail)}`;
+  return text.length <= 3_000 ? text : `${text.slice(0, 2_700)}
+See the persisted verification result for the complete evidence.`;
+}
+
 export function createSupervisionExtension(dependencies: SupervisionDependencies): Extension {
   const evidence = dependencies.evidence ?? new EvidenceBuilder();
   const judgeTask = defineTask<JudgeInput, JudgeState, JudgeResult, Record<string, never>>({
     name: "nf.judge",
-    version: 1,
+    version: 2,
     initial: () => ({ phase: "snapshot" }),
+    migrate(input, checkpoint, fromVersion) {
+      if (
+        fromVersion < 2 &&
+        checkpoint &&
+        typeof checkpoint === "object" &&
+        !Array.isArray(checkpoint) &&
+        (checkpoint as Record<string, unknown>).phase === "judge" &&
+        !("attempt" in checkpoint)
+      ) {
+        return { input: input as JudgeInput, checkpoint: { ...checkpoint, attempt: 1 } as JudgeState };
+      }
+      return { input: input as JudgeInput, checkpoint: checkpoint as JudgeState };
+    },
     phases: {
       snapshot: async (task, runtime, context) => {
         const [contract, control] = await Promise.all([
@@ -210,15 +252,120 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           return;
         }
 
+        const checkpoint = task.state.checkpoint;
+        const snapshotId = checkpoint.snapshot.snapshot_id;
+        const usage = dependencies.judge.lastUsage;
+        const raw = dependencies.judge.lastRawOutput;
+
+        if (decision.action === "DONE" && task.input.verify_configured) {
+          await runtime.commit(async (tx) => {
+            const control = await tx.doc(NfControl, runtime.conversationId);
+            const round = await tx.doc(NfRound, runtime.conversationId);
+            const verifyDoc = await tx.doc(NfVerify, runtime.conversationId);
+            const usageDoc = await tx.doc(NfUsage, runtime.conversationId);
+            if (usage) usageDoc.judge = { ...usage, updated_at: now() };
+            if (
+              control.task_version !== task.input.task_version ||
+              control.input_epoch !== task.input.input_epoch
+            ) {
+              round.status = "superseded";
+              round.updated_at = now();
+              control.phase = "IDLE";
+              control.updated_at = now();
+              await tx.appendEntry(NfEvent, runtime.conversationId, {
+                data: {
+                  type: "nf.round_superseded",
+                  at: now(),
+                  details: { round_id: task.input.round_id, phase: "before-verification" },
+                },
+              });
+              return {
+                status: "terminal",
+                outcome: { status: "completed", result: { action: null, superseded: true } },
+              };
+            }
+            if (!verifyDoc.baseline) {
+              control.status = "INTERRUPTED";
+              control.phase = "IDLE";
+              control.last_error = "Verifier is configured but the protected baseline is missing.";
+              control.updated_at = now();
+              round.status = "interrupted";
+              round.updated_at = now();
+              await tx.appendEntry(NfEvent, runtime.conversationId, {
+                data: {
+                  type: "nf.verification_missing_baseline",
+                  at: now(),
+                  details: { round_id: task.input.round_id },
+                },
+              });
+              return {
+                status: "terminal",
+                outcome: { status: "completed", result: { action: null, interrupted: true } },
+              };
+            }
+            const verifyTaskId = await tx.createTask(
+              verifyTask,
+              {
+                task_id: task.input.task_id,
+                task_version: task.input.task_version,
+                round_id: task.input.round_id,
+                contract_sha256: task.input.contract_sha256,
+              },
+              { ownership: { kind: "task", taskId: runtime.taskId } },
+            );
+            control.status = "ACTIVE";
+            control.phase = "VERIFY";
+            control.delivery = null;
+            control.last_decision = null;
+            control.last_error = null;
+            control.updated_at = now();
+            round.status = "open";
+            round.decision = null;
+            round.updated_at = now();
+            await tx.appendEntry(NfEvent, runtime.conversationId, {
+              data: {
+                type: "nf.judge_output",
+                at: now(),
+                details: {
+                  round_id: task.input.round_id,
+                  raw_output: raw?.slice(0, 4_000) ?? null,
+                  usage: usage ?? null,
+                },
+              },
+            });
+            await tx.appendEntry(NfEvent, runtime.conversationId, {
+              data: {
+                type: "nf.verification_started",
+                at: now(),
+                details: {
+                  round_id: task.input.round_id,
+                  verify_task_id: String(verifyTaskId),
+                  decision: decision as unknown as JsonValue,
+                },
+              },
+            });
+            const next: JudgeState = {
+              phase: "verify",
+              snapshot: checkpoint.snapshot,
+              decision,
+              verifyTaskId,
+            };
+            return {
+              status: "waiting",
+              checkpoint: next,
+              on: [verifyTaskId],
+              policy: "allSettled",
+            };
+          }, context);
+          return;
+        }
+
         const handle = decision.action === "CONTINUE"
           ? await runtime.conversation(runtime.conversationId, context)
           : undefined;
         if (decision.action === "CONTINUE" && !handle) {
           throw new Error("nf.judge: cannot create a direction submission without the root conversation.");
         }
-        const snapshotId = task.state.checkpoint.snapshot.snapshot_id;
-        const usage = dependencies.judge.lastUsage;
-        const raw = dependencies.judge.lastRawOutput;
         const requestId = directionRequestId(task.input.task_id, task.input.task_version, task.input.round_id);
         const direction: DirectionData = {
           schema_version: 1,
@@ -322,6 +469,185 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           };
         }, context);
       },
+      verify: async (task, runtime, context) => {
+        const checkpoint = task.state.checkpoint;
+        const [outcome] = await runtime.outcomes([checkpoint.verifyTaskId], context);
+        if (!outcome || outcome.status !== "completed") {
+          await runtime.commit(async (tx) => {
+            const control = await tx.doc(NfControl, runtime.conversationId);
+            const round = await tx.doc(NfRound, runtime.conversationId);
+            control.status = "INTERRUPTED";
+            control.phase = "IDLE";
+            control.last_error = "The verification task did not complete.";
+            control.updated_at = now();
+            round.status = "interrupted";
+            round.updated_at = now();
+            await tx.appendEntry(NfEvent, runtime.conversationId, {
+              data: {
+                type: "nf.verification_interrupted",
+                at: now(),
+                details: {
+                  round_id: task.input.round_id,
+                  status: outcome?.status ?? "missing",
+                },
+              },
+            });
+            return {
+              status: "terminal",
+              outcome: { status: "completed", result: { action: null, interrupted: true } },
+            };
+          }, context);
+          return;
+        }
+
+        const verified = outcome.result as VerifyOutcome;
+        if (verified.passed) {
+          await runtime.commit(async (tx) => {
+            const control = await tx.doc(NfControl, runtime.conversationId);
+            const round = await tx.doc(NfRound, runtime.conversationId);
+            if (
+              control.task_version !== task.input.task_version ||
+              control.input_epoch !== task.input.input_epoch ||
+              control.status !== "ACTIVE"
+            ) {
+              round.status = "superseded";
+              round.updated_at = now();
+              control.phase = "IDLE";
+              control.updated_at = now();
+              await tx.appendEntry(NfEvent, runtime.conversationId, {
+                data: {
+                  type: "nf.round_superseded",
+                  at: now(),
+                  details: { round_id: task.input.round_id, phase: "after-verification" },
+                },
+              });
+              return {
+                status: "terminal",
+                outcome: { status: "completed", result: { action: null, superseded: true } },
+              };
+            }
+            control.last_round_id = task.input.round_id;
+            control.last_decision = { action: "DONE", reason: "Independent verification passed." };
+            control.last_error = null;
+            control.status = "DONE";
+            control.phase = "IDLE";
+            control.delivery = null;
+            control.updated_at = now();
+            round.status = "decided";
+            round.decision = checkpoint.decision as unknown as JsonValue;
+            round.updated_at = now();
+            await tx.appendEntry(NfEvent, runtime.conversationId, {
+              data: {
+                type: "nf.decision",
+                at: now(),
+                details: {
+                  round_id: task.input.round_id,
+                  snapshot_id: checkpoint.snapshot.snapshot_id,
+                  decision: checkpoint.decision as unknown as JsonValue,
+                  verification: verified.result,
+                },
+              },
+            });
+            return {
+              status: "terminal",
+              outcome: { status: "completed", result: { action: "DONE" } },
+            };
+          }, context);
+          return;
+        }
+
+        const verifyDoc = await runtime.snapshot(NfVerify, runtime.conversationId, context);
+        const result = verified.result as unknown as VerificationResult | { error: string };
+        const repair = validateDecision(
+          {
+            action: "CONTINUE",
+            reason: "Independent verification failed; repair the task and restore protected files.",
+            evidence_ids: [],
+            next_message: repairMessage(result, verifyDoc?.baseline ?? []),
+            external: null,
+          },
+          checkpoint.snapshot,
+        );
+        const handle = await runtime.conversation(runtime.conversationId, context);
+        if (!handle) throw new Error("nf.judge: cannot deliver a verification repair without the root conversation.");
+        const requestId = directionRequestId(task.input.task_id, task.input.task_version, task.input.round_id);
+        const direction: DirectionData = {
+          schema_version: 1,
+          round_id: task.input.round_id,
+          task_id: task.input.task_id,
+          task_version: task.input.task_version,
+          contract_sha256: task.input.contract_sha256,
+          snapshot_id: checkpoint.snapshot.snapshot_id,
+          request_id: requestId,
+          decision: repair as unknown as JsonValue,
+          created_at: now(),
+        };
+
+        await runtime.commit(async (tx) => {
+          const control = await tx.doc(NfControl, runtime.conversationId);
+          const round = await tx.doc(NfRound, runtime.conversationId);
+          if (
+            control.task_version !== task.input.task_version ||
+            control.input_epoch !== task.input.input_epoch
+          ) {
+            round.status = "superseded";
+            round.updated_at = now();
+            control.phase = "IDLE";
+            control.updated_at = now();
+            return {
+              status: "terminal",
+              outcome: { status: "completed", result: { action: null, superseded: true } },
+            };
+          }
+          const submissionId = await handle.submit(tx, {
+            type: "input",
+            content: repair.next_message,
+            entry: { kind: NfDirection.kind, data: direction },
+            requestId,
+          });
+          control.last_round_id = task.input.round_id;
+          control.last_decision = decisionSummary(repair);
+          control.last_error = null;
+          control.status = "ACTIVE";
+          control.phase = "WORKER";
+          control.delivery = {
+            stage: "submitted",
+            submission_id: String(submissionId),
+            round_id: task.input.round_id,
+          };
+          control.updated_at = now();
+          round.status = "decided";
+          round.decision = repair as unknown as JsonValue;
+          round.updated_at = now();
+          await tx.appendEntry(NfEvent, runtime.conversationId, {
+            data: {
+              type: "nf.verification_failed",
+              at: now(),
+              details: {
+                round_id: task.input.round_id,
+                result: verified.result,
+                decision: repair as unknown as JsonValue,
+              },
+            },
+          });
+          await tx.appendEntry(NfEvent, runtime.conversationId, {
+            data: {
+              type: "nf.decision",
+              at: now(),
+              details: {
+                round_id: task.input.round_id,
+                snapshot_id: checkpoint.snapshot.snapshot_id,
+                decision: repair as unknown as JsonValue,
+                delivery: control.delivery,
+              },
+            },
+          });
+          return {
+            status: "terminal",
+            outcome: { status: "completed", result: { action: "CONTINUE" } },
+          };
+        }, context);
+      },
     },
     abort: async (_task, runtime, context) => {
       await runtime.commit(
@@ -333,7 +659,7 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
 
   return defineExtension({
     name: "nf-supervision",
-    tasks: [judgeTask],
+    tasks: [judgeTask, verifyTask],
     hooks: [
       hook(GenerationTask, {
         afterRun: async (run, api, context) => {
@@ -356,6 +682,7 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
                 },
                 input_epoch: control.input_epoch,
                 contract_sha256: contract.contract_sha256,
+                verify_configured: Boolean(contract.task.verify),
               }),
             ],
           };

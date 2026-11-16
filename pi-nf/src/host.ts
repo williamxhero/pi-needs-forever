@@ -42,7 +42,6 @@ export type HostSqliteOptions = {
   context?: Context;
   judge?: Judge;
   judge_model?: ModelRef;
-  evidence?: EvidenceBuilder;
 };
 
 export class Host {
@@ -84,7 +83,7 @@ export class Host {
       );
       return new Host(
         harness,
-        new Supervision(harness, options.model, extensions),
+        new Supervision(harness, options.model, extensions, options.db_path ?? null),
         prepared,
         lease,
         context,

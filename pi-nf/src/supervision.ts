@@ -10,7 +10,7 @@ import {
   section,
 } from "@earendil-works/pi-durable";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
-import { NfContract, NfControl, NfEvent, NfRound, NfUsage } from "./docs.js";
+import { NfContract, NfControl, NfEvent, NfRound, NfUsage, NfVerify } from "./docs.js";
 import type {
   ControlPhase,
   ControlStatus,
@@ -21,6 +21,7 @@ import type {
   TaskLimits,
 } from "./types.js";
 import { AlreadyStartedError, NotResumableError, NotStartedError, TaskDoneError } from "./types.js";
+import { recordProtectedBaseline } from "./verify.js";
 
 export const START_REQUEST_PREFIX = "nf:start";
 
@@ -58,6 +59,7 @@ export class Supervision {
     private readonly harness: Harness,
     private readonly model: ModelRef,
     private readonly extensions: readonly Extension[] = NF_BASE_EXTENSIONS,
+    private readonly statePath: string | null = null,
   ) {}
 
   async start(input: StartInput, context: Context = BACKGROUND_CONTEXT): Promise<StartReceipt> {
@@ -66,6 +68,7 @@ export class Supervision {
     if (existing?.status === "ready") {
       throw new AlreadyStartedError(`task ${prepared.task.task_id} is already started.`);
     }
+    const baseline = recordProtectedBaseline(prepared.task);
     const root = await this.harness.root(context, {
       agent: {
         model: this.model,
@@ -93,6 +96,12 @@ export class Supervision {
       control.delivery = null;
       control.pause_reason = null;
       control.updated_at = at;
+
+      const verify = await tx.doc(NfVerify, root.id);
+      verify.baseline = baseline;
+      verify.state_path = this.statePath;
+      verify.last_result = null;
+      verify.updated_at = at;
 
       await tx.appendEntry(NfEvent, root.id, {
         data: {
@@ -155,17 +164,20 @@ export class Supervision {
   }
 
   async inspect(context: Context = BACKGROUND_CONTEXT): Promise<SupervisionStatus> {
-    const [contract, control, round, usage, inspection] = await Promise.all([
+    const [contract, control, round, usage, verifyDoc, inspection] = await Promise.all([
       this.harness.snapshot(NfContract, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfControl, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfRound, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfUsage, ROOT_CONVERSATION_ID, context),
+      this.harness.snapshot(NfVerify, ROOT_CONVERSATION_ID, context),
       this.harness.inspect(context),
     ]);
     if (!contract || contract.status !== "ready" || !contract.task) {
       throw new NotStartedError("pi-nf task has no ready contract.");
     }
     if (!control) throw new NotStartedError("pi-nf task has no control document.");
+    const configured = Boolean(contract.task.verify);
+    const lastResult = (verifyDoc?.last_result ?? null) as { passed?: unknown } | null;
     return {
       task_id: contract.task.task_id,
       task_version: control.task_version,
@@ -178,6 +190,22 @@ export class Supervision {
       delivery: control.delivery,
       last_error: control.last_error,
       judge_usage: usage?.judge ?? null,
+      verification: {
+        configured,
+        baseline_count: verifyDoc?.baseline?.length ?? 0,
+        state: !configured
+          ? "not_configured"
+          : verifyDoc?.baseline === null || verifyDoc?.baseline === undefined
+            ? "failed"
+            : lastResult && typeof lastResult === "object" && "error" in lastResult
+              ? "failed"
+              : lastResult?.passed === true
+                ? "passed"
+                : lastResult?.passed === false
+                  ? "failed"
+                  : "ready",
+        last_result: verifyDoc?.last_result ?? null,
+      },
       limits: contract.task.limits as TaskLimits,
       task_graph: {
         tasks: inspection.tasks.map((task) => ({

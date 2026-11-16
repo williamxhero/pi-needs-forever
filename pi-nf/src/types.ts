@@ -64,6 +64,19 @@ export type DecisionSummary = {
   reason: string;
 };
 
+export type ProtectedBaseline = {
+  path: string;
+  sha256: string;
+  content_base64: string;
+};
+
+export type VerificationStatus = {
+  configured: boolean;
+  baseline_count: number;
+  state: "not_configured" | "ready" | "passed" | "failed";
+  last_result: unknown;
+};
+
 export type SupervisionStatus = {
   task_id: string;
   task_version: number;
@@ -83,6 +96,7 @@ export type SupervisionStatus = {
     cost: number;
     attempts: number;
   } | null;
+  verification: VerificationStatus;
   limits: TaskLimits;
   task_graph: {
     tasks: { id: string; kind: string; status: string }[];
@@ -111,10 +125,6 @@ export type SendReceipt = {
 
 export class ContractError extends Error {
   override name = "ContractError";
-}
-
-export class VerifierUnsupportedError extends ContractError {
-  override name = "VerifierUnsupportedError";
 }
 
 export class LeaseHeldError extends Error {
