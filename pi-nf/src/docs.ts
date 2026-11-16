@@ -43,6 +43,7 @@ export type ControlDoc = {
   last_round_id: string | null;
   last_decision: DecisionSummary | null;
   delivery: DeliveryState | null;
+  last_error: string | null;
   pause_reason: string | null;
   updated_at: string;
 };
@@ -64,6 +65,7 @@ export const NfControl = defineDoc<ControlDoc>({
     last_round_id: null,
     last_decision: null,
     delivery: null,
+    last_error: null,
     pause_reason: null,
     updated_at: "",
   }),
@@ -74,12 +76,14 @@ export type RoundDoc = {
   schema_version: 1;
   round_id: string;
   run: {
-    first: string;
-    answer: string;
-    last: string;
+    first: number;
+    answer: number;
+    last: number;
   } | null;
   status: "open" | "decided" | "superseded" | "interrupted";
-  decision: DecisionSummary | null;
+  decision: JsonValue | null;
+  snapshot_id: string | null;
+  evidence_count: number;
   created_at: string;
   updated_at: string;
 };
@@ -96,6 +100,8 @@ export const NfRound = defineDoc<RoundDoc>({
     run: null,
     status: "open",
     decision: null,
+    snapshot_id: null,
+    evidence_count: 0,
     created_at: "",
     updated_at: "",
   }),

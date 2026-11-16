@@ -16,7 +16,9 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { ContractPolicy, readContractFile } from "./contract.js";
 import { Lease } from "./lease.js";
 import { createDefaultModels, resolveModelRef } from "./models.js";
-import { NF_EXTENSIONS, Supervision } from "./supervision.js";
+import { NF_BASE_EXTENSIONS, Supervision } from "./supervision.js";
+import { createSupervisionExtension } from "./tasks/judge.js";
+import type { Judge } from "./judge.js";
 import type { PreparedContract, StartReceipt, SupervisionStatus, TaskContract } from "./types.js";
 
 export type HostOptions = {
@@ -26,6 +28,7 @@ export type HostOptions = {
   contract: TaskContract | unknown;
   db_path?: string;
   context?: Context;
+  judge?: Judge;
 };
 
 export type HostSqliteOptions = {
@@ -34,6 +37,7 @@ export type HostSqliteOptions = {
   models?: Models;
   model?: ModelRef;
   context?: Context;
+  judge?: Judge;
 };
 
 export class Host {
@@ -57,20 +61,30 @@ export class Host {
     let harness: Harness;
     const reports: Report[] = [];
     try {
+      const extensions = options.judge
+        ? [...NF_BASE_EXTENSIONS, createSupervisionExtension({ judge: options.judge })]
+        : [...NF_BASE_EXTENSIONS];
       const registry = createRegistry();
-      for (const extension of NF_EXTENSIONS) registry.install(extension);
+      for (const extension of extensions) registry.install(extension);
       harness = await Harness.open(
         options.storage,
         {
           models: options.models,
           registry,
-          settings: { extensions: NF_EXTENSIONS },
+          settings: { extensions },
           env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? prepared.task.workspace }),
           onReport: (report) => reports.push(report),
         },
         context,
       );
-      return new Host(harness, new Supervision(harness, options.model), prepared, lease, context, reports);
+      return new Host(
+        harness,
+        new Supervision(harness, options.model, extensions),
+        prepared,
+        lease,
+        context,
+        reports,
+      );
     } catch (error) {
       lease.release();
       throw error;
@@ -89,6 +103,7 @@ export class Host {
       contract,
       db_path: options.db_path,
       context: options.context,
+      ...(options.judge ? { judge: options.judge } : {}),
     });
   }
 
