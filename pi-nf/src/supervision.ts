@@ -197,11 +197,13 @@ export class Supervision {
           ? "not_configured"
           : verifyDoc?.baseline === null || verifyDoc?.baseline === undefined
             ? "failed"
-            : lastResult?.passed === true
-              ? "passed"
-              : lastResult?.passed === false
-                ? "failed"
-                : "ready",
+            : lastResult && typeof lastResult === "object" && "error" in lastResult
+              ? "failed"
+              : lastResult?.passed === true
+                ? "passed"
+                : lastResult?.passed === false
+                  ? "failed"
+                  : "ready",
         last_result: verifyDoc?.last_result ?? null,
       },
       limits: contract.task.limits as TaskLimits,

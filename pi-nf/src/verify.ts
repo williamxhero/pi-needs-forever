@@ -6,6 +6,7 @@ import type { Context } from "@earendil-works/chord/context";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { ProtectedBaseline, TaskContract } from "./types.js";
 import { ContractError } from "./types.js";
+import { redact } from "./redact.js";
 
 function inside(workspace: string, path: string): boolean {
   const suffix = relative(workspace, path);
@@ -202,8 +203,8 @@ export async function runCompletionGate(input: GateInput): Promise<VerificationR
     configured: true,
     argv: verify.argv,
     exit_code: exitCode,
-    stdout: bounded(stdout),
-    stderr: bounded(stderr),
+    stdout: bounded(String(redact(stdout))),
+    stderr: bounded(String(redact(stderr))),
     timed_out: timedOut,
     duration_ms: duration,
     protected_before: protectedBefore,
