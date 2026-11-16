@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "task_id": "example-task",
+  "workspace": "C:/absolute/path/to/your/workspace",
+  "goal": "Replace this example goal with the outcome you want.",
+  "acceptance": [
+    { "id": "A1", "text": "Replace this with a verifiable acceptance item." }
+  ],
+  "authorization": "Only modify the workspace above; do not touch unrelated files.",
+  "c2": { "mode": "legacy" },
+  "limits": {
+    "max_worker_turns": null,
+    "max_minutes": null
+  }
+}
