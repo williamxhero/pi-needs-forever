@@ -14,7 +14,8 @@ Issues、SPEC 和 tickets 位于 williamxhero/pi-needs-forever，使用 gh CLI �
 - 标签名称按 triage-labels.md 映射。
 - 发布 SPEC 时创建独立 Issue，并应用 ready-for-agent。
 - 关闭 Issue 前核对验收证据，先记录结论，再关闭。
-- 历史 Claude Code／loop-forever Issues 保留原状；Codex Supervisor v0.1 使用独立 SPEC。
+- pi-nf 的迁移与实现使用独立 SPEC；Codex Supervisor v0.1 的历史证据保留在迁移源 `williamxhero/needs-forever`，不在本仓库重新开 Issue。
+- 新工作只推 `origin`（本仓库）；本地 `upstream` 指向迁移源，仅作只读参考。
 
 ## Pull requests as a triage surface
 

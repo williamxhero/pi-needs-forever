@@ -7,3 +7,12 @@
 | ready-for-agent | ready-for-agent | 规格明确，可交给 Agent |
 | ready-for-human | ready-for-human | 需要人工实现 |
 | wontfix | wontfix | 不予实施 |
+
+## Category labels
+
+`/triage` 还会使用两个 category 角色；这两个标签在本仓库已存在：
+
+| Category role | Label in our tracker | Meaning |
+| --- | --- | --- |
+| bug | bug | 功能损坏或行为错误 |
+| enhancement | enhancement | 新功能或改进 |
