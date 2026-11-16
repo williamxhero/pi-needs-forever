@@ -29,6 +29,16 @@ export function leasePath(task: Pick<TaskContract, "task_id" | "workspace">): st
   return resolve(tmpdir(), "pi-nf-locks", `${digest}.lock`);
 }
 
+function processAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 export class Lease {
   private released = false;
 
@@ -45,17 +55,30 @@ export class Lease {
       fd = openSync(path, "wx");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-        let owner: Partial<LeaseOwner> = {};
+        let owner: Partial<LeaseOwner>;
         try {
           owner = JSON.parse(readFileSync(path, "utf8")) as Partial<LeaseOwner>;
         } catch {
           // An unreadable lock is still held; never silently replace it.
+          throw new LeaseHeldError(`pi-nf task ${task.task_id} has an unreadable lock; refusing a second writer.`);
         }
-        throw new LeaseHeldError(
-          `pi-nf task ${task.task_id} is already owned${owner.pid ? ` by pid ${owner.pid}` : ""}; refusing a second writer.`,
-        );
+        if (typeof owner.pid !== "number" || owner.pid <= 0 || processAlive(owner.pid)) {
+          throw new LeaseHeldError(
+            `pi-nf task ${task.task_id} is already owned${owner.pid ? ` by pid ${owner.pid}` : ""}; refusing a second writer.`,
+          );
+        }
+        try {
+          unlinkSync(path);
+          fd = openSync(path, "wx");
+        } catch (reclaimError) {
+          if ((reclaimError as NodeJS.ErrnoException).code === "EEXIST") {
+            throw new LeaseHeldError(`pi-nf task ${task.task_id} was claimed by another writer during stale-lock recovery.`);
+          }
+          throw reclaimError;
+        }
+      } else {
+        throw error;
       }
-      throw error;
     }
     const token = randomUUID();
     try {
