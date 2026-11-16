@@ -10,7 +10,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { ContractPolicy } from "./contract.js";
-import { NfContract, NfControl, NfEvent } from "./docs.js";
+import { NfContract, NfControl, NfEvent, NfRound } from "./docs.js";
 import type {
   ControlPhase,
   ControlStatus,
@@ -51,12 +51,13 @@ const NfPrompt = defineExtension({
   ],
 });
 
-export const NF_EXTENSIONS: readonly Extension[] = [CodingTools, NfPrompt];
+export const NF_BASE_EXTENSIONS: readonly Extension[] = [CodingTools, NfPrompt];
 
 export class Supervision {
   constructor(
     private readonly harness: Harness,
     private readonly model: ModelRef,
+    private readonly extensions: readonly Extension[] = NF_BASE_EXTENSIONS,
     private readonly contracts = new ContractPolicy(),
   ) {}
 
@@ -70,7 +71,7 @@ export class Supervision {
       agent: {
         model: this.model,
         cwd: prepared.task.workspace,
-        extensions: NF_EXTENSIONS,
+        extensions: this.extensions,
       },
     });
     const at = new Date().toISOString();
@@ -126,9 +127,10 @@ export class Supervision {
   }
 
   async inspect(context: Context = BACKGROUND_CONTEXT): Promise<SupervisionStatus> {
-    const [contract, control, inspection] = await Promise.all([
+    const [contract, control, round, inspection] = await Promise.all([
       this.harness.snapshot(NfContract, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfControl, ROOT_CONVERSATION_ID, context),
+      this.harness.snapshot(NfRound, ROOT_CONVERSATION_ID, context),
       this.harness.inspect(context),
     ]);
     if (!contract || contract.status !== "ready" || !contract.task) {
@@ -143,7 +145,7 @@ export class Supervision {
       input_epoch: control.input_epoch,
       last_round: control.last_round_id ? { round_id: control.last_round_id } : null,
       last_decision: control.last_decision,
-      evidence_count: 0,
+      evidence_count: round?.evidence_count ?? 0,
       delivery: control.delivery,
       limits: contract.task.limits as TaskLimits,
       task_graph: {
