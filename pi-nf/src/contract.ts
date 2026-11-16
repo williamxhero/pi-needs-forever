@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { C2Mode, PreparedContract, TaskContract, TaskLimits, VerifyConfig } from "./types.js";
-import { ContractError, VerifierUnsupportedError } from "./types.js";
+import { ContractError } from "./types.js";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -118,9 +118,6 @@ export function normalizeContract(input: unknown): TaskContract {
     limits: limits(raw.limits),
     ...(verify ? { verify } : {}),
   };
-  if (verify) {
-    throw new VerifierUnsupportedError("This build does not implement the independent verification gate yet (SPEC 2).");
-  }
   return task;
 }
 

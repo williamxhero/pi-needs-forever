@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ContractPolicy, contractHash, normalizeContract } from "../src/contract.js";
-import { ContractError, VerifierUnsupportedError } from "../src/types.js";
+import { ContractError } from "../src/types.js";
 
 function workspace(): string {
   return mkdtempSync(join(tmpdir(), "pi-nf-contract-"));
@@ -88,12 +88,20 @@ test("contract rejects invalid limits", () => {
   }
 });
 
-test("contract rejects verifier configuration until SPEC 2", () => {
+test("contract accepts a valid verifier configuration and rejects invalid shapes", () => {
   const dir = workspace();
   try {
     const contract = valid(dir);
     contract.verify = { argv: [process.execPath, "verify.mjs"], timeout_seconds: 10, protected_files: ["verify.mjs"] };
-    assert.throws(() => new ContractPolicy().prepare(contract), VerifierUnsupportedError);
+    const prepared = new ContractPolicy().prepare(contract);
+    assert.deepEqual(prepared.task.verify, contract.verify);
+    for (const verify of [
+      { argv: [], timeout_seconds: 10, protected_files: [] },
+      { argv: [process.execPath], timeout_seconds: 0, protected_files: [] },
+      { argv: [process.execPath], timeout_seconds: 10, protected_files: "x" },
+    ]) {
+      assert.throws(() => new ContractPolicy().prepare({ ...valid(dir), verify }), ContractError);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
