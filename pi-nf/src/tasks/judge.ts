@@ -82,8 +82,21 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
   const evidence = dependencies.evidence ?? new EvidenceBuilder();
   const judgeTask = defineTask<JudgeInput, JudgeState, JudgeResult, Record<string, never>>({
     name: "nf.judge",
-    version: 1,
+    version: 2,
     initial: () => ({ phase: "snapshot" }),
+    migrate(input, checkpoint, fromVersion) {
+      if (
+        fromVersion < 2 &&
+        checkpoint &&
+        typeof checkpoint === "object" &&
+        !Array.isArray(checkpoint) &&
+        (checkpoint as Record<string, unknown>).phase === "judge" &&
+        !("attempt" in checkpoint)
+      ) {
+        return { input: input as JudgeInput, checkpoint: { ...checkpoint, attempt: 1 } as JudgeState };
+      }
+      return { input: input as JudgeInput, checkpoint: checkpoint as JudgeState };
+    },
     phases: {
       snapshot: async (task, runtime, context) => {
         const [contract, control] = await Promise.all([
@@ -302,9 +315,24 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             );
             control.status = "ACTIVE";
             control.phase = "VERIFY";
+            control.delivery = null;
+            control.last_decision = null;
+            control.last_error = null;
             control.updated_at = now();
             round.status = "open";
+            round.decision = null;
             round.updated_at = now();
+            await tx.appendEntry(NfEvent, runtime.conversationId, {
+              data: {
+                type: "nf.judge_output",
+                at: now(),
+                details: {
+                  round_id: task.input.round_id,
+                  raw_output: raw?.slice(0, 4_000) ?? null,
+                  usage: usage ?? null,
+                },
+              },
+            });
             await tx.appendEntry(NfEvent, runtime.conversationId, {
               data: {
                 type: "nf.verification_started",

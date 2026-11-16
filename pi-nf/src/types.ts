@@ -127,10 +127,6 @@ export class ContractError extends Error {
   override name = "ContractError";
 }
 
-export class VerifierUnsupportedError extends ContractError {
-  override name = "VerifierUnsupportedError";
-}
-
 export class LeaseHeldError extends Error {
   override name = "LeaseHeldError";
 }

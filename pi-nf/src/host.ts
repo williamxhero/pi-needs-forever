@@ -42,7 +42,6 @@ export type HostSqliteOptions = {
   context?: Context;
   judge?: Judge;
   judge_model?: ModelRef;
-  evidence?: EvidenceBuilder;
 };
 
 export class Host {

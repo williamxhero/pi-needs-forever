@@ -13,7 +13,6 @@ export {
   NotResumableError,
   NotStartedError,
   TaskDoneError,
-  VerifierUnsupportedError,
 } from "./types.js";
 export type {
   AcceptanceItem,
