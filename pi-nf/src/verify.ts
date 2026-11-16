@@ -82,12 +82,28 @@ export type GateInput = {
   context: Context;
 };
 
+const IGNORED_SEGMENTS = new Set([
+  ".git",
+  ".pi",
+  ".nf",
+  ".scratch",
+  ".worktrees",
+  "node_modules",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".hypothesis",
+  ".mypy_cache",
+  ".tox",
+  "htmlcov",
+]);
+
 function excluded(path: string, workspace: string, statePath: string | null): boolean {
   const name = relative(workspace, path).replaceAll("\\", "/");
-  if (name === ".git" || name.startsWith(".git/") || name === ".pi" || name.startsWith(".pi/")) return true;
-  if (name === ".nf" || name.startsWith(".nf/") || name === ".scratch" || name.startsWith(".scratch/")) return true;
-  if (name === ".worktrees" || name.startsWith(".worktrees/")) return true;
-  if (name === "node_modules" || name.startsWith("node_modules/")) return true;
+  if (name.split("/").some((segment) => IGNORED_SEGMENTS.has(segment))) return true;
+  if (name.split("/").some((segment) => segment === ".coverage" || segment.startsWith(".coverage."))) return true;
   if (!statePath) return false;
   const state = resolve(statePath);
   return path === state || path === `${state}-wal` || path === `${state}-shm`;

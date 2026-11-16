@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -171,14 +171,22 @@ test("CompletionGate rejects a configured verifier without a baseline", async ()
   }
 });
 
-test("workspaceDigest ignores the state database and its sidecars", async () => {
+test("workspaceDigest ignores the state database and test caches", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "pi-nf-gate-digest-"));
   try {
     const state = join(workspace, "state.sqlite");
     writeFileSync(state, "before");
+    mkdirSync(join(workspace, ".pytest_cache"));
+    writeFileSync(join(workspace, ".pytest_cache", "cache"), "before");
+    mkdirSync(join(workspace, "__pycache__"));
+    writeFileSync(join(workspace, "__pycache__", "module.pyc"), "before");
+    writeFileSync(join(workspace, ".coverage"), "before");
     const before = await workspaceDigest(workspace, state);
     writeFileSync(state, "after");
     writeFileSync(`${state}-wal`, "wal");
+    writeFileSync(join(workspace, ".pytest_cache", "cache"), "after");
+    writeFileSync(join(workspace, "__pycache__", "module.pyc"), "after");
+    writeFileSync(join(workspace, ".coverage"), "after");
     assert.equal(await workspaceDigest(workspace, state), before);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
