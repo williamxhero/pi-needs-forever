@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -163,10 +164,23 @@ test("writeAudit publishes an atomic projection inside the task workspace", asyn
     assert.equal(published.task_id, "audit-task");
     assert.equal(published.rounds.length, 2);
 
+    // The CLI mirror rewrites the same path; an atomic refresh must replace it.
+    const refreshed = await writeAudit(db);
+    assert.equal(refreshed.path, expected);
+    assert.equal(JSON.parse(readFileSync(expected, "utf8")).task_id, "audit-task");
+
     const custom = join(workspace, "custom-nfg");
     const customResult = await writeAudit(db, { root: custom });
     assert.equal(customResult.path, join(custom, "audit-task", "audit.json"));
     assert.ok(existsSync(customResult.path));
+
+    const output = execFileSync(process.execPath, ["dist/src/cli.js", "audit", "--db", db, "--json"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    });
+    const printed = JSON.parse(output) as { engine: string; task_id: string };
+    assert.equal(printed.engine, "pi-nf");
+    assert.equal(printed.task_id, "audit-task");
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
