@@ -113,6 +113,31 @@ the worker with `--model provider/modelId` and the judge with
 `--judge-model provider/modelId`; the judge may use a different provider or model
 from the worker.
 
+## NFG display projection
+
+`start`, `send`, `pause` and `resume` also maintain a read-only projection for
+**NFG** (Needs Forever GUI) at `<workspace>/.pi-nf/<task_id>/audit.json`, refreshed
+at most once per second while the CLI writer runs. It is computed from committed
+documents and entries, is never read back by pi-nf, and never changes task state.
+`--no-nfg` disables it; `--out <directory>` publishes it under another root.
+
+```bash
+# Rebuild the projection from committed state (read-only database access).
+node dist/src/cli.js audit --db data/task.sqlite
+node dist/src/cli.js audit --db data/task.sqlite --out D:/work/example --json
+```
+
+NFG (in the `needs-forever` repository, `src/NFG/pi-nf.ts`) discovers
+`.pi-nf/*/audit.json` in each workspace it already catalogs and renders the task
+with the fields NFG already has: status, phase, goal, acceptance items, rounds,
+decisions, route audit and delivery evidence. No NFG field is added for pi-nf.
+
+pi-nf tasks are read-only in NFG: pause/resume/delete stay with this CLI because
+they need the pi-nf writer lease. A round shows a received direction only when
+the durable submission was `placed` or `done`; a committed direction that never
+reached A stays visibly undelivered. Register the task workspace as an NFG
+workspace so the projection is discoverable.
+
 ## Limits, pause and recovery
 
 `limits` accepts `max_worker_turns`, `max_minutes`, `max_tokens` and `max_cost`; `null` means no limit. Limits are checked before a CONTINUE direction is sent. A hit persists `PAUSED/user_limit` and does not send the next round. `max_tokens`/`max_cost` currently account for judge usage, not worker A's conversation usage.

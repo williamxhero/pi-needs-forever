@@ -36,4 +36,6 @@ export type { Decision, DecisionAction, ExternalWait, Judge, JudgeUsage, ModelJu
 export { RoutePolicy, discoverLocalRoutes, ingestInventory, ingestInventoryFromEvidence, routeFamily, routeFingerprint, validateC2Decision } from "./routes.js";
 export type { C2Context, Diagnosis, RouteAttempt, RouteCandidate, RouteCatalogEntry, RouteEvidence, RouteExecution, RouteIdentity, RouteOutcome, RoutePlan, RouteState, RouteStatus } from "./routes.js";
 export { startWebServer } from "./web.js";
+export { auditDirectory, readAudit, writeAudit } from "./audit.js";
+export type { NfAudit, NfAuditDelivery, NfAuditEvent, NfAuditRound, WriteAuditOptions } from "./audit.js";
 export type { RunningWebServer, WebServerOptions } from "./web.js";
