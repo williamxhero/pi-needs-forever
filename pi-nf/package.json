@@ -1,0 +1,24 @@
+{
+  "name": "pi-nf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Durable Needs Forever supervision on pi-durable",
+  "engines": { "node": ">=24" },
+  "bin": { "pi-nf": "dist/src/cli.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test --test-concurrency=1 \"dist/test/*.test.js\"",
+    "start": "node dist/src/cli.js"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.5.2",
+    "@earendil-works/pi-ai": "1.5.2",
+    "@earendil-works/pi-durable": "1.5.2",
+    "@earendil-works/pi-schema": "1.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.0",
+    "typescript": "6.0.3"
+  }
+}
