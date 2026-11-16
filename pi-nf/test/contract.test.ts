@@ -22,14 +22,26 @@ function valid(workspacePath: string): Record<string, unknown> {
   };
 }
 
-test("contract normalizes workspace and defaults C2 to legacy", () => {
+test("contract normalizes workspace and defaults C2 to enforce", () => {
   const dir = workspace();
   try {
     const prepared = new ContractPolicy().prepare(valid(dir));
     assert.equal(prepared.task.workspace, dir);
-    assert.deepEqual(prepared.task.c2, { mode: "legacy" });
+    assert.deepEqual(prepared.task.c2, { mode: "enforce" });
     assert.equal(prepared.task.acceptance[0]?.id, "A1");
     assert.match(prepared.contract_sha256, /^[0-9a-f]{64}$/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("contract accepts explicit legacy/shadow C2 modes", () => {
+  const dir = workspace();
+  try {
+    for (const mode of ["legacy", "shadow"] as const) {
+      const prepared = new ContractPolicy().prepare({ ...valid(dir), c2: { mode } });
+      assert.deepEqual(prepared.task.c2, { mode });
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -107,12 +119,12 @@ test("contract accepts a valid verifier configuration and rejects invalid shapes
   }
 });
 
-test("contract rejects non-legacy C2 until SPEC 3", () => {
+test("contract accepts explicit enforce C2 mode", () => {
   const dir = workspace();
   try {
     const contract = valid(dir);
     contract.c2 = { mode: "enforce" };
-    assert.throws(() => new ContractPolicy().prepare(contract), ContractError);
+    assert.deepEqual(new ContractPolicy().prepare(contract).task.c2, { mode: "enforce" });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

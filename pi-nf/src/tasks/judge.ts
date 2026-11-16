@@ -7,11 +7,12 @@ import {
   runEndTask,
 } from "@earendil-works/pi-durable";
 import type { EntryId, Extension, TaskId } from "@earendil-works/pi-durable";
-import { NfContract, NfControl, NfDirection, NfEvent, NfRound, NfUsage, NfVerify, type DirectionData } from "../docs.js";
+import { NfContract, NfControl, NfDirection, NfEvent, NfRoute, NfRound, NfUsage, NfVerify, type DirectionData } from "../docs.js";
 import { EvidenceBuilder, type EvidenceSnapshot } from "../evidence.js";
 import type { ProtectedBaseline } from "../types.js";
 import type { VerificationResult } from "../verify.js";
 import { verifyTask, type VerifyOutcome } from "./verify.js";
+import { RoutePolicy, ingestInventoryFromEvidence, type C2Mode } from "../routes.js";
 import {
   type Decision,
   type DecisionAction,
@@ -29,6 +30,7 @@ export type JudgeInput = {
   input_epoch: number;
   contract_sha256: string;
   verify_configured: boolean;
+  c2_mode: C2Mode;
 };
 
 export type JudgeState =
@@ -46,6 +48,7 @@ const MAX_JUDGE_OUTPUT_ATTEMPTS = 3;
 export type SupervisionDependencies = {
   judge: Judge;
   evidence?: EvidenceBuilder;
+  routes?: RoutePolicy;
 };
 
 const now = (): string => new Date().toISOString();
@@ -80,6 +83,7 @@ See the persisted verification result for the complete evidence.`;
 
 export function createSupervisionExtension(dependencies: SupervisionDependencies): Extension {
   const evidence = dependencies.evidence ?? new EvidenceBuilder();
+  const routes = dependencies.routes ?? new RoutePolicy();
   const judgeTask = defineTask<JudgeInput, JudgeState, JudgeResult, Record<string, never>>({
     name: "nf.judge",
     version: 2,
@@ -149,8 +153,28 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           }, context);
           return;
         }
+        const routeDoc = await runtime.snapshot(NfRoute, runtime.conversationId, context);
+        const captured = routes.capture(routeDoc?.execution ?? null, snapshot.evidence, task.input.task_version);
+        const inventory = ingestInventoryFromEvidence(
+          contract.task.workspace,
+          snapshot.evidence,
+          task.input.task_id,
+          task.input.task_version,
+        );
+        const catalog = [...(routeDoc?.catalog ?? [])];
+        for (const entry of inventory) {
+          if (!catalog.some((existing) => existing.route_id === entry.route_id)) catalog.push(entry);
+        }
+        const ledger = [...(routeDoc?.ledger ?? []), ...(captured ? [captured] : [])];
+        snapshot.c2 = routes.project(task.input.c2_mode, { catalog, ledger, execution: null });
+
         await runtime.commit(async (tx) => {
           const round = await tx.doc(NfRound, runtime.conversationId);
+          const route = await tx.doc(NfRoute, runtime.conversationId);
+          route.catalog = catalog;
+          route.ledger = ledger;
+          route.execution = null;
+          route.updated_at = now();
           round.round_id = task.input.round_id;
           round.run = task.input.run;
           round.status = "open";
@@ -180,6 +204,14 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
         try {
           const checkpoint = task.state.checkpoint;
           decision = validateDecision(await dependencies.judge.decide(checkpoint.snapshot, runtime.signal), checkpoint.snapshot);
+          if (checkpoint.snapshot.c2) {
+            decision = routes.admit(
+              decision,
+              checkpoint.snapshot.c2,
+              checkpoint.snapshot.evidence.map((entry) => entry.id),
+              task.input.c2_mode,
+            );
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           const rejected = error instanceof JudgeOutputError;
@@ -316,6 +348,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             control.status = "ACTIVE";
             control.phase = "VERIFY";
             control.delivery = null;
+            control.last_route_id = null;
+            control.last_plan_id = null;
             control.last_decision = null;
             control.last_error = null;
             control.updated_at = now();
@@ -360,6 +394,11 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           return;
         }
 
+        const snapshot = checkpoint.snapshot;
+        const c2 = snapshot.c2;
+        const routeExecution = decision.action === "CONTINUE" && c2
+          ? routes.prepare(decision, c2, task.input.round_id)
+          : null;
         const handle = decision.action === "CONTINUE"
           ? await runtime.conversation(runtime.conversationId, context)
           : undefined;
@@ -375,6 +414,7 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           contract_sha256: task.input.contract_sha256,
           snapshot_id: snapshotId,
           request_id: requestId,
+          ...(routeExecution ? { route_id: routeExecution.route_id, plan_id: routeExecution.plan_id } : {}),
           decision: decision as unknown as JsonValue,
           created_at: now(),
         };
@@ -383,6 +423,7 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           const control = await tx.doc(NfControl, runtime.conversationId);
           const round = await tx.doc(NfRound, runtime.conversationId);
           const usageDoc = await tx.doc(NfUsage, runtime.conversationId);
+          const routeDoc = await tx.doc(NfRoute, runtime.conversationId);
           if (usage) usageDoc.judge = { ...usage, updated_at: now() };
 
           if (
@@ -412,6 +453,10 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             };
           }
 
+          routeDoc.execution = routeExecution;
+          routeDoc.updated_at = now();
+          control.last_route_id = routeExecution?.route_id ?? control.last_route_id;
+          control.last_plan_id = routeExecution?.plan_id ?? control.last_plan_id;
           control.last_round_id = task.input.round_id;
           control.last_decision = decisionSummary(decision);
           control.last_error = null;
@@ -436,6 +481,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             control.phase = "WORKER";
           } else {
             control.delivery = null;
+            control.last_route_id = null;
+            control.last_plan_id = null;
             control.status = decision.action === "DONE" ? "DONE" : "WAIT_EXTERNAL";
             control.phase = "IDLE";
           }
@@ -529,6 +576,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
             control.last_round_id = task.input.round_id;
             control.last_decision = { action: "DONE", reason: "Independent verification passed." };
             control.last_error = null;
+            control.last_route_id = null;
+            control.last_plan_id = null;
             control.status = "DONE";
             control.phase = "IDLE";
             control.delivery = null;
@@ -608,6 +657,8 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
           control.last_round_id = task.input.round_id;
           control.last_decision = decisionSummary(repair);
           control.last_error = null;
+          control.last_route_id = null;
+          control.last_plan_id = null;
           control.status = "ACTIVE";
           control.phase = "WORKER";
           control.delivery = {
@@ -683,6 +734,7 @@ export function createSupervisionExtension(dependencies: SupervisionDependencies
                 input_epoch: control.input_epoch,
                 contract_sha256: contract.contract_sha256,
                 verify_configured: Boolean(contract.task.verify),
+                c2_mode: contract.task.c2?.mode ?? "enforce",
               }),
             ],
           };

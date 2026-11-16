@@ -31,6 +31,7 @@ function contract(workspace: string): Record<string, unknown> {
     goal: "Deliver the first pi-nf loop",
     acceptance: [{ id: "A1", text: "The loop can continue and finish with evidence" }],
     authorization: "Only edit this workspace",
+    c2: { mode: "legacy" },
     limits: { max_worker_turns: null, max_minutes: null },
   };
 }

@@ -34,6 +34,7 @@ function contract(workspace: string, taskId = "task-1"): Record<string, unknown>
     goal: "Implement the requested feature",
     acceptance: [{ id: "A1", text: "The feature works" }],
     authorization: "Only edit this workspace",
+    c2: { mode: "legacy" },
     limits: { max_worker_turns: null, max_minutes: null },
   };
 }

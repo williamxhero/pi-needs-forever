@@ -138,13 +138,6 @@ export function validateDecision(raw: unknown, snapshot: EvidenceSnapshot): Deci
   const nextMessage = typeof object.next_message === "string" ? object.next_message : null;
   if (nextMessage === null) throw new JudgeOutputError("next_message must be a string.");
 
-  if (object.diagnosis !== undefined && object.diagnosis !== null) {
-    throw new JudgeOutputError("C2 diagnosis is not supported in this build (SPEC 3).");
-  }
-  if (object.route_plan !== undefined && object.route_plan !== null) {
-    throw new JudgeOutputError("C2 route plans are not supported in this build (SPEC 3).");
-  }
-
   const externalRaw = object.external;
   let external: ExternalWait | null = null;
   if (action === "WAIT_EXTERNAL") {
@@ -182,7 +175,15 @@ export function validateDecision(raw: unknown, snapshot: EvidenceSnapshot): Deci
     independentEvidence(ids, snapshot);
   }
 
-  return { action, reason, evidence_ids: ids, next_message: nextMessage, external };
+  return {
+    action,
+    reason,
+    evidence_ids: ids,
+    next_message: nextMessage,
+    external,
+    ...(object.diagnosis !== undefined ? { diagnosis: object.diagnosis as JsonValue } : {}),
+    ...(object.route_plan !== undefined ? { route_plan: object.route_plan as JsonValue } : {}),
+  };
 }
 
 export function decisionSummary(decision: Decision): DecisionSummary {

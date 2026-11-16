@@ -37,10 +37,10 @@ function minutesOrNull(value: unknown, field: string): number | null {
 }
 
 function c2Mode(value: unknown): C2Mode {
-  if (value === undefined) return "legacy";
+  if (value === undefined) return "enforce";
   const mode = nonEmpty(value, "c2.mode");
-  if (mode !== "legacy") {
-    throw new ContractError(`c2.mode "${mode}" requires C2 route support (SPEC 3); this build accepts only legacy.`);
+  if (mode !== "enforce" && mode !== "shadow" && mode !== "legacy") {
+    throw new ContractError("c2.mode must be enforce, shadow or legacy.");
   }
   return mode;
 }

@@ -17,6 +17,15 @@ It is a standalone host, not a Codex plugin and not a Pi coding-agent extension.
 - A killed host can reopen the same SQLite database, reclaim a stale lease, resume `nf.judge`, and avoid duplicating a committed direction.
 - `status` is a read-only projection; `send` is a one-shot human input path when no writer holds the lease. `send` rejects DONE and INTERRUPTED until an explicit resume exists.
 - Contracts may configure a fixed-argv verifier with protected files. DONE waits for `nf.verify`; a failed gate returns a repair CONTINUE with the actual evidence.
+- C2 enforcement is the default: CONTINUE carries a diagnosis and a route plan. Local workspace artifacts are discovered by B and recorded in a route catalog; a route ledger rejects a third equivalent no-progress attempt. WAIT_EXTERNAL requires every observed route to be attempted or excluded with evidence.
+
+## C2 routes
+
+`c2.mode` defaults to `enforce`. A CONTINUE must carry a diagnosis and a route plan with one selected route and its concrete actions. When more than one executable route exists, at least two materially different candidates are required; a single route needs `single_route_reason`.
+
+B discovers bounded local workspace artifacts at start (up to four non-secret files, 16 KiB each) and records provenance, digest evidence and authorization in a durable catalog. Candidate route wording never proves availability; observed routes need catalog evidence. B reads inventory hints independently and never treats a hint as permission or availability.
+
+Each delivered route is recorded in a durable ledger. A next round captures the actual outcome; a third equivalent resource/operation attempt is rejected, and a second same-family failure needs a new hypothesis or discriminating check. Missing facts require a bounded inventory CONTINUE. `WAIT_EXTERNAL` is accepted only when every catalog route has a current attempted/excluded proof and a specific resume condition.
 
 ## Verification gate
 
@@ -38,8 +47,8 @@ At `start`, pi-nf records each protected file's SHA-256 and original content bef
 
 These are later SPECs, not hidden behavior:
 
-- **C2 route planning** (SPEC 3): only `c2: { "mode": "legacy" }` is accepted.
 - **Pause/resume, cumulative limits, crash-loop interruption, web UI** (SPEC 4): limits are stored but not enforced yet; pause/resume is not exposed.
+- **Provider/API probing**: C2 currently grounds local workspace artifacts and observed failures. It does not make arbitrary network calls or prove provider authorization/quota.
 - Migrating old Codex `state.json`, thread IDs or event logs.
 
 ## Install and test

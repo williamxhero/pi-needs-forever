@@ -8,6 +8,26 @@ import type {
   TaskContract,
 } from "./types.js";
 
+import type { RouteAttempt, RouteCatalogEntry, RouteExecution } from "./routes.js";
+
+export type RouteDoc = {
+  schema_version: 1;
+  catalog: RouteCatalogEntry[];
+  ledger: RouteAttempt[];
+  execution: RouteExecution | null;
+  updated_at: string;
+};
+
+export const NfRoute = defineDoc<RouteDoc>({
+  kind: "nf.route",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ schema_version: 1, catalog: [], ledger: [], execution: null, updated_at: "" }),
+  checkpointWhen: () => true,
+});
+
 export type ContractDoc = {
   schema_version: 1;
   status: "unset" | "ready";
@@ -41,6 +61,8 @@ export type ControlDoc = {
   worker_turns: number;
   active_seconds: number;
   last_round_id: string | null;
+  last_route_id: string | null;
+  last_plan_id: string | null;
   last_decision: DecisionSummary | null;
   delivery: DeliveryState | null;
   last_error: string | null;
@@ -63,6 +85,8 @@ export const NfControl = defineDoc<ControlDoc>({
     worker_turns: 0,
     active_seconds: 0,
     last_round_id: null,
+    last_route_id: null,
+    last_plan_id: null,
     last_decision: null,
     delivery: null,
     last_error: null,
@@ -165,6 +189,8 @@ export type DirectionData = {
   contract_sha256: string;
   snapshot_id: string;
   request_id: string;
+  route_id?: string;
+  plan_id?: string;
   decision: JsonValue;
   created_at: string;
 };
