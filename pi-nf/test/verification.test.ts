@@ -50,6 +50,7 @@ function contract(workspace: string, exitCode: number): Record<string, unknown> 
     goal: "Verify the task",
     acceptance: [{ id: "A1", text: "verification" }],
     authorization: "local only",
+    c2: { mode: "legacy" },
     limits: { max_worker_turns: null, max_minutes: null },
     verify: {
       argv: [process.execPath, verifyPath],

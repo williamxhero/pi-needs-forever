@@ -130,5 +130,6 @@ test("terminal decisions are rejected on incomplete evidence", () => {
 test("judge output rejects fences, extra fields and unsupported C2", () => {
   assert.throws(() => validateDecision("```json\n" + JSON.stringify(continueDecision) + "\n```", snapshot()));
   assert.throws(() => validateDecision({ ...continueDecision, extra: true }, snapshot()));
-  assert.throws(() => validateDecision({ ...continueDecision, route_plan: { candidates: [] } }, snapshot()));
+  const withPlan = validateDecision({ ...continueDecision, route_plan: { candidates: [] } }, snapshot());
+  assert.deepEqual(withPlan.route_plan, { candidates: [] });
 });

@@ -11,6 +11,7 @@ import type {
 import type { ControlDoc } from "./docs.js";
 import { redact } from "./redact.js";
 import type { TaskContract } from "./types.js";
+import type { C2Context } from "./routes.js";
 
 export type SnapshotEvidence = {
   id: string;
@@ -40,6 +41,7 @@ export type EvidenceSnapshot = {
   recent_instructions?: JsonValue[];
   recent_verification?: JsonValue;
   repeated_failure?: JsonValue;
+  c2?: C2Context;
 };
 
 export type EntryReader = {

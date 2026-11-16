@@ -10,7 +10,7 @@ import {
   section,
 } from "@earendil-works/pi-durable";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
-import { NfContract, NfControl, NfEvent, NfRound, NfUsage, NfVerify } from "./docs.js";
+import { NfContract, NfControl, NfEvent, NfRound, NfRoute, NfUsage, NfVerify } from "./docs.js";
 import type {
   ControlPhase,
   ControlStatus,
@@ -22,6 +22,7 @@ import type {
 } from "./types.js";
 import { AlreadyStartedError, NotResumableError, NotStartedError, TaskDoneError } from "./types.js";
 import { recordProtectedBaseline } from "./verify.js";
+import { discoverLocalRoutes } from "./routes.js";
 
 export const START_REQUEST_PREFIX = "nf:start";
 
@@ -69,6 +70,7 @@ export class Supervision {
       throw new AlreadyStartedError(`task ${prepared.task.task_id} is already started.`);
     }
     const baseline = recordProtectedBaseline(prepared.task);
+    const catalog = discoverLocalRoutes(prepared.task.workspace);
     const root = await this.harness.root(context, {
       agent: {
         model: this.model,
@@ -92,6 +94,8 @@ export class Supervision {
       control.worker_turns = 0;
       control.active_seconds = 0;
       control.last_round_id = null;
+      control.last_route_id = null;
+      control.last_plan_id = null;
       control.last_decision = null;
       control.delivery = null;
       control.pause_reason = null;
@@ -102,6 +106,12 @@ export class Supervision {
       verify.state_path = this.statePath;
       verify.last_result = null;
       verify.updated_at = at;
+
+      const route = await tx.doc(NfRoute, root.id);
+      route.catalog = catalog;
+      route.ledger = [];
+      route.execution = null;
+      route.updated_at = at;
 
       await tx.appendEntry(NfEvent, root.id, {
         data: {
@@ -164,12 +174,13 @@ export class Supervision {
   }
 
   async inspect(context: Context = BACKGROUND_CONTEXT): Promise<SupervisionStatus> {
-    const [contract, control, round, usage, verifyDoc, inspection] = await Promise.all([
+    const [contract, control, round, usage, verifyDoc, routeDoc, inspection] = await Promise.all([
       this.harness.snapshot(NfContract, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfControl, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfRound, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfUsage, ROOT_CONVERSATION_ID, context),
       this.harness.snapshot(NfVerify, ROOT_CONVERSATION_ID, context),
+      this.harness.snapshot(NfRoute, ROOT_CONVERSATION_ID, context),
       this.harness.inspect(context),
     ]);
     if (!contract || contract.status !== "ready" || !contract.task) {
@@ -178,6 +189,8 @@ export class Supervision {
     if (!control) throw new NotStartedError("pi-nf task has no control document.");
     const configured = Boolean(contract.task.verify);
     const lastResult = (verifyDoc?.last_result ?? null) as { passed?: unknown } | null;
+    const decisionPlan = (round?.decision as { route_plan?: { candidates?: unknown[] } } | null)?.route_plan;
+    const candidates = Array.isArray(decisionPlan?.candidates) ? decisionPlan.candidates.length : 0;
     return {
       task_id: contract.task.task_id,
       task_version: control.task_version,
@@ -205,6 +218,13 @@ export class Supervision {
                   ? "failed"
                   : "ready",
         last_result: verifyDoc?.last_result ?? null,
+      },
+      route: {
+        mode: contract.task.c2?.mode ?? "enforce",
+        selected_route_id: control.last_route_id ?? routeDoc?.execution?.route_id ?? null,
+        candidate_count: candidates,
+        attempts: routeDoc?.ledger.length ?? 0,
+        last_outcome: routeDoc?.ledger.at(-1)?.outcome ?? null,
       },
       limits: contract.task.limits as TaskLimits,
       task_graph: {
