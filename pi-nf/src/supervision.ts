@@ -176,6 +176,7 @@ export class Supervision {
       last_decision: control.last_decision,
       evidence_count: round?.evidence_count ?? 0,
       delivery: control.delivery,
+      last_error: control.last_error,
       judge_usage: usage?.judge ?? null,
       limits: contract.task.limits as TaskLimits,
       task_graph: {

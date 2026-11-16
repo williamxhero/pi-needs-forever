@@ -12,6 +12,7 @@ function printStatus(status: SupervisionStatus): void {
     `decision: ${status.last_decision ? `${status.last_decision.action}: ${status.last_decision.reason}` : "-"}`,
     `evidence: ${status.evidence_count}`,
     `delivery: ${status.delivery ? `${status.delivery.stage} ${status.delivery.submission_id ?? ""}` : "-"}`,
+    `error: ${status.last_error ?? "-"}`,
     `limits: turns=${status.limits.max_worker_turns ?? "none"} minutes=${status.limits.max_minutes ?? "none"}`,
     `tasks: ${status.task_graph.tasks.map((task) => `${task.kind}:${task.status}`).join(", ") || "-"}`,
     `submissions: ${status.task_graph.submissions.map((submission) => `${submission.id.slice(0, 8)}:${submission.status}`).join(", ") || "-"}`,
@@ -25,6 +26,7 @@ function usage(): void {
 Usage:
   pi-nf start --task <contract.json> --db <state.sqlite> [--model provider/model] [--json]
   pi-nf status --db <state.sqlite> [--json]
+  pi-nf send --db <state.sqlite> --message <text> [--request-id <id>] [--model provider/model] [--json]
 `);
 }
 
@@ -36,6 +38,8 @@ async function main(argv: string[]): Promise<number> {
       task: { type: "string" },
       db: { type: "string" },
       model: { type: "string" },
+      message: { type: "string" },
+      "request-id": { type: "string" },
       json: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -50,6 +54,26 @@ async function main(argv: string[]): Promise<number> {
     const status = await Host.status(values.db);
     if (values.json) console.log(JSON.stringify(status, null, 2));
     else printStatus(status);
+    return 0;
+  }
+  if (command === "send") {
+    if (!values.db) throw new Error("send requires --db <state.sqlite>");
+    if (!values.message || !values.message.trim()) throw new Error("send requires --message <text>");
+    const models = createDefaultModels();
+    const model = resolveModelRef(values.model);
+    const host = await Host.openExisting(values.db, { models, model });
+    try {
+      const receipt = await host.send(values.message, values["request-id"]);
+      await host.waitForIdle();
+      const status = await host.inspect();
+      if (values.json) console.log(JSON.stringify({ receipt, status }, null, 2));
+      else {
+        console.log(`sent input (submission ${receipt.submission_id}, epoch ${receipt.input_epoch})`);
+        printStatus(status);
+      }
+    } finally {
+      await host.close();
+    }
     return 0;
   }
   if (command === "start") {

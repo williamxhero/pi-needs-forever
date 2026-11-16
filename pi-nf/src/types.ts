@@ -74,6 +74,7 @@ export type SupervisionStatus = {
   last_decision: DecisionSummary | null;
   evidence_count: number;
   delivery: DeliveryState | null;
+  last_error: string | null;
   judge_usage: {
     provider: string;
     model: string;

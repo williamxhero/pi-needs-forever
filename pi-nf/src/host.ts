@@ -14,6 +14,8 @@ import {
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { ContractPolicy, readContractFile } from "./contract.js";
+import { NfContract } from "./docs.js";
+import type { EvidenceBuilder } from "./evidence.js";
 import { Lease } from "./lease.js";
 import { createDefaultModels, resolveModelRef } from "./models.js";
 import { NF_BASE_EXTENSIONS, Supervision } from "./supervision.js";
@@ -29,6 +31,7 @@ export type HostOptions = {
   db_path?: string;
   context?: Context;
   judge?: Judge;
+  evidence?: EvidenceBuilder;
 };
 
 export type HostSqliteOptions = {
@@ -38,6 +41,7 @@ export type HostSqliteOptions = {
   model?: ModelRef;
   context?: Context;
   judge?: Judge;
+  evidence?: EvidenceBuilder;
 };
 
 export class Host {
@@ -62,7 +66,7 @@ export class Host {
     const reports: Report[] = [];
     try {
       const extensions = options.judge
-        ? [...NF_BASE_EXTENSIONS, createSupervisionExtension({ judge: options.judge })]
+        ? [...NF_BASE_EXTENSIONS, createSupervisionExtension({ judge: options.judge, ...(options.evidence ? { evidence: options.evidence } : {}) })]
         : [...NF_BASE_EXTENSIONS];
       const registry = createRegistry();
       for (const extension of extensions) registry.install(extension);
@@ -88,6 +92,43 @@ export class Host {
     } catch (error) {
       lease.release();
       throw error;
+    }
+  }
+
+  static async openExisting(
+    dbPath: string,
+    options: { models?: Models; model?: ModelRef; judge?: Judge; context?: Context } = {},
+  ): Promise<Host> {
+    const models = options.models ?? createDefaultModels();
+    const model = options.model ?? resolveModelRef();
+    const contract = await Host.readContract(dbPath);
+    const storage = await openNodeSqliteStorage(dbPath);
+    const judge = options.judge ?? new ModelJudge(models, { model });
+    return Host.open({
+      storage,
+      models,
+      model,
+      contract,
+      db_path: dbPath,
+      context: options.context,
+      judge,
+    });
+  }
+
+  static async readContract(dbPath: string, context: Context = BACKGROUND_CONTEXT): Promise<TaskContract> {
+    if (!existsSync(dbPath)) throw new Error(`pi-nf database does not exist: ${dbPath}`);
+    const storage = await openNodeSqliteStorage(dbPath);
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry(), readOnly: true },
+      context,
+    );
+    try {
+      const contract = await harness.snapshot(NfContract, ROOT_CONVERSATION_ID, context);
+      if (!contract?.task || contract.status !== "ready") throw new Error("pi-nf task has no ready contract.");
+      return contract.task;
+    } finally {
+      await harness.close(context);
     }
   }
 
