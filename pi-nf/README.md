@@ -18,6 +18,9 @@ It is a standalone host, not a Codex plugin and not a Pi coding-agent extension.
 - `status` is a read-only projection; `send` is a one-shot human input path when no writer holds the lease. `send` rejects DONE and INTERRUPTED until an explicit resume exists.
 - Contracts may configure a fixed-argv verifier with protected files. DONE waits for `nf.verify`; a failed gate returns a repair CONTINUE with the actual evidence.
 - C2 enforcement is the default: CONTINUE carries a diagnosis and a route plan. Local workspace artifacts are discovered by B and recorded in a route catalog; a route ledger rejects a third equivalent no-progress attempt. WAIT_EXTERNAL requires every observed route to be attempted or excluded with evidence.
+- `pause` persists PAUSED before canceling owned work. `resume` opens a new task version, preserves the contract/artifacts/baseline/counters, and does not replay old directions. Explicit `INTERRUPTED` recovery is required after restart-limit interruption.
+- Cumulative `max_worker_turns`/`max_minutes`/`max_tokens`/`max_cost` limits pause with `user_limit` before the next direction. Judge tokens/cost are tracked; A's conversation usage is not yet included.
+- CLI `pause`/`resume`/`web` and a local read-only web status page are available.
 
 ## C2 routes
 
@@ -47,7 +50,8 @@ At `start`, pi-nf records each protected file's SHA-256 and original content bef
 
 These are later SPECs, not hidden behavior:
 
-- **Pause/resume, cumulative limits, crash-loop interruption, web UI** (SPEC 4): limits are stored but not enforced yet; pause/resume is not exposed.
+- **Full provider/auth recovery classification**: judge transport failures become INTERRUPTED; authentication/quota-specific RECOVERING treatment is not yet distinguished.
+- **Full task-graph UI**: the built-in web page is a read-only status projection, not the complete NFG interaction surface.
 - **Provider/API probing**: C2 currently grounds local workspace artifacts and observed failures. It does not make arbitrary network calls or prove provider authorization/quota.
 - Migrating old Codex `state.json`, thread IDs or event logs.
 
@@ -94,6 +98,13 @@ node dist/src/cli.js status --db data/task.sqlite --json
 
 # One-shot human input when no other writer holds the task lease.
 node dist/src/cli.js send --db data/task.sqlite --message "Please continue with the next step."
+
+# Control a task when no other writer holds its lease.
+node dist/src/cli.js pause --db data/task.sqlite
+node dist/src/cli.js resume --db data/task.sqlite
+
+# Local read-only status page.
+node dist/src/cli.js web --db data/task.sqlite --port 8787
 ```
 
 The default model is `opencode-go/deepseek-v4.1-flash`. The CLI reads
@@ -101,6 +112,14 @@ The default model is `opencode-go/deepseek-v4.1-flash`. The CLI reads
 the worker with `--model provider/modelId` and the judge with
 `--judge-model provider/modelId`; the judge may use a different provider or model
 from the worker.
+
+## Limits, pause and recovery
+
+`limits` accepts `max_worker_turns`, `max_minutes`, `max_tokens` and `max_cost`; `null` means no limit. Limits are checked before a CONTINUE direction is sent. A hit persists `PAUSED/user_limit` and does not send the next round. `max_tokens`/`max_cost` currently account for judge usage, not worker A's conversation usage.
+
+`pause` writes PAUSED before canceling owned judge/verify tasks. Late results cannot overwrite PAUSED. `resume` increments the task version and input epoch, keeps the contract/artifacts/verifier baseline/cumulative counters, clears pending delivery state, and submits a fresh resume input. It does not replay an old direction. `INTERRUPTED` requires an explicit resume.
+
+The `start`, `send`, `pause` and `resume` CLI commands are one-shot writers: only one may hold the task lease at a time. `status` and `web` open SQLite read-only and can run beside a writer. The web page never mutates state or uploads task content.
 
 ## Durability model
 
@@ -112,7 +131,7 @@ from the worker.
 
 ## Testing boundary
 
-`npm test` exercises the host seam (`start` / `send` / `status` / durable docs / task graph) with a faux worker and judge. Verification subprocesses are real local processes; C2 routes, pause/resume and the web UI are intentionally absent from this build. The design and migration context are in:
+`npm test` exercises the host seam (`start` / `send` / `pause` / `resume` / `status` / `web` / durable docs / task graph) with a faux worker and judge. Verification subprocesses are real local processes; C2 routes, lifecycle and the read-only web projection are included. The suite does not claim live model or provider acceptance. The design and migration context are in:
 
 - [`docs/design/pi-nf-modules.md`](../docs/design/pi-nf-modules.md)
 - [`docs/design/pi-nf-architecture.html`](../docs/design/pi-nf-architecture.html)

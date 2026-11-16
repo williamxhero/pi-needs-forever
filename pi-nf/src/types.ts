@@ -18,6 +18,8 @@ export type VerifyConfig = {
 export type TaskLimits = {
   max_worker_turns: number | null;
   max_minutes: number | null;
+  max_tokens?: number | null;
+  max_cost?: number | null;
 };
 
 export type TaskContract = {
@@ -105,6 +107,12 @@ export type SupervisionStatus = {
     last_outcome: string | null;
   };
   limits: TaskLimits;
+  usage: {
+    worker_turns: number;
+    active_seconds: number;
+    judge_tokens: number;
+    judge_cost: number;
+  };
   task_graph: {
     tasks: { id: string; kind: string; status: string }[];
     submissions: { id: string; status: string; conversation_id: string }[];
