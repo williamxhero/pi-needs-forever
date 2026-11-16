@@ -99,6 +99,8 @@ export class Supervision {
       control.last_decision = null;
       control.delivery = null;
       control.pause_reason = null;
+      control.active_started_at = at;
+      control.limit_reason = null;
       control.updated_at = at;
 
       const verify = await tx.doc(NfVerify, root.id);
@@ -142,6 +144,64 @@ export class Supervision {
       submission_id: String(submission.id),
       status: "ACTIVE",
     };
+  }
+
+  async pause(reason: "user" | "user_limit" = "user", context: Context = BACKGROUND_CONTEXT): Promise<SupervisionStatus> {
+    const root = await this.harness.conversation(ROOT_CONVERSATION_ID, context);
+    if (!root) throw new NotStartedError("pi-nf task has not started.");
+    await root.commit(async (tx) => {
+      const control = await tx.doc(NfControl, root.id);
+      if (control.status === "DONE") throw new TaskDoneError("DONE cannot be paused.");
+      if (control.status === "INTERRUPTED") throw new NotResumableError("INTERRUPTED requires explicit resume, not pause.");
+      if (control.status === "PAUSED") return;
+      const at = new Date().toISOString();
+      control.active_seconds += control.active_started_at ? Math.max(0, (Date.now() - Date.parse(control.active_started_at)) / 1000) : 0;
+      control.active_started_at = null;
+      control.status = "PAUSED";
+      control.phase = "IDLE";
+      control.pause_reason = reason;
+      control.delivery = null;
+      control.task_version += 1;
+      control.updated_at = at;
+      await tx.appendEntry(NfEvent, root.id, {
+        data: { type: "nf.pause", at, details: { reason, task_version: control.task_version } },
+      });
+    }, context);
+    await root.abort(context);
+    return this.inspect(context);
+  }
+
+  async resume(context: Context = BACKGROUND_CONTEXT): Promise<SupervisionStatus> {
+    const root = await this.harness.conversation(ROOT_CONVERSATION_ID, context);
+    if (!root) throw new NotStartedError("pi-nf task has not started.");
+    await root.commit(async (tx) => {
+      const control = await tx.doc(NfControl, root.id);
+      if (control.status === "DONE") throw new TaskDoneError("DONE cannot be resumed.");
+      if (control.status !== "PAUSED" && control.status !== "INTERRUPTED" && control.status !== "WAIT_EXTERNAL") {
+        throw new NotResumableError(`Only PAUSED, INTERRUPTED or WAIT_EXTERNAL can be explicitly resumed; current state is ${control.status}.`);
+      }
+      const at = new Date().toISOString();
+      control.task_version += 1;
+      control.input_epoch += 1;
+      control.status = "ACTIVE";
+      control.phase = "WORKER";
+      control.pause_reason = null;
+      control.limit_reason = null;
+      control.last_error = null;
+      control.delivery = null;
+      control.active_started_at = at;
+      control.updated_at = at;
+      await root.submit(tx, {
+        type: "input",
+        content: "Resume the task from the persisted state. Continue only authorized, verifiable work; do not replay old directions.",
+        requestId: `nf:resume:${control.task_version}`,
+      });
+      await tx.appendEntry(NfEvent, root.id, {
+        data: { type: "nf.resume", at, details: { task_version: control.task_version, input_epoch: control.input_epoch } },
+      });
+    }, context);
+    this.harness.resume();
+    return this.inspect(context);
   }
 
   async send(content: string, context: Context = BACKGROUND_CONTEXT, requestId?: string): Promise<SendReceipt> {
@@ -218,6 +278,12 @@ export class Supervision {
                   ? "failed"
                   : "ready",
         last_result: verifyDoc?.last_result ?? null,
+      },
+      usage: {
+        worker_turns: control.worker_turns,
+        active_seconds: control.active_seconds + (control.active_started_at ? Math.max(0, (Date.now() - Date.parse(control.active_started_at)) / 1000) : 0),
+        judge_tokens: (usage?.judge?.input ?? 0) + (usage?.judge?.output ?? 0),
+        judge_cost: usage?.judge?.cost ?? 0,
       },
       route: {
         mode: contract.task.c2?.mode ?? "enforce",

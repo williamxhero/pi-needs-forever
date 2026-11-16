@@ -35,3 +35,5 @@ export type { EvidenceSnapshot, SnapshotEvidence } from "./evidence.js";
 export type { Decision, DecisionAction, ExternalWait, Judge, JudgeUsage, ModelJudgeOptions } from "./judge.js";
 export { RoutePolicy, discoverLocalRoutes, ingestInventory, ingestInventoryFromEvidence, routeFamily, routeFingerprint, validateC2Decision } from "./routes.js";
 export type { C2Context, Diagnosis, RouteAttempt, RouteCandidate, RouteCatalogEntry, RouteEvidence, RouteExecution, RouteIdentity, RouteOutcome, RoutePlan, RouteState, RouteStatus } from "./routes.js";
+export { startWebServer } from "./web.js";
+export type { RunningWebServer, WebServerOptions } from "./web.js";
