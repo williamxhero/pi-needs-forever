@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream, readFileSync, realpathSync, statSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { open, readdir, readlink } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
@@ -95,6 +96,23 @@ function exclusionCandidate(path: string, workspace: string, statePath: string |
   return path === state || path === `${state}-wal` || path === `${state}-shm`;
 }
 
+async function isGitMetadata(path: string, entry: Dirent): Promise<boolean> {
+  if (entry.isDirectory()) {
+    const children = await readdir(path, { withFileTypes: true });
+    return children.some((child) => child.name === "HEAD" && child.isFile()) &&
+      children.some((child) => child.name === "objects" && child.isDirectory());
+  }
+  if (entry.isFile()) {
+    const handle = await open(path, "r");
+    try {
+      const prefix = Buffer.alloc(8);
+      const { bytesRead } = await handle.read(prefix, 0, prefix.length, 0);
+      return prefix.subarray(0, bytesRead).toString() === "gitdir: ";
+    } finally { await handle.close(); }
+  }
+  return false;
+}
+
 export async function workspaceDigest(workspace: string, statePath: string | null): Promise<string> {
   const root = resolve(workspace);
   const hash = createHash("sha256");
@@ -103,24 +121,12 @@ export async function workspaceDigest(workspace: string, statePath: string | nul
   const discover = async (directory: string): Promise<void> => {
     const entries = (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name === ".git") continue;
+      if (!entry.isDirectory()) continue;
       const path = resolve(directory, entry.name);
+      if (entry.name === ".git" && await isGitMetadata(path, entry)) continue;
       const children = await readdir(path, { withFileTypes: true });
       const git = children.find((child) => child.name === ".git");
-      let repository = false;
-      if (git?.isDirectory()) {
-        const metadata = await readdir(resolve(path, ".git"), { withFileTypes: true });
-        repository = metadata.some((child) => child.name === "HEAD" && child.isFile()) &&
-          metadata.some((child) => child.name === "objects" && child.isDirectory());
-      } else if (git?.isFile()) {
-        const handle = await open(resolve(path, ".git"), "r");
-        try {
-          const prefix = Buffer.alloc(8);
-          const { bytesRead } = await handle.read(prefix, 0, prefix.length, 0);
-          repository = prefix.subarray(0, bytesRead).toString() === "gitdir: ";
-        } finally { await handle.close(); }
-      }
-      if (repository) {
+      if (git && await isGitMetadata(resolve(path, ".git"), git)) {
         hash.update(`${JSON.stringify(["directory", nameForRoot(path, root)])}\n`);
         await walk(path);
       } else {
@@ -149,23 +155,14 @@ export async function workspaceDigest(workspace: string, statePath: string | nul
     for (const entry of entries) {
       const path = resolve(directory, entry.name);
       if (exclusionCandidate(path, root, statePath)) {
-        if (entry.isDirectory()) {
+        if (entry.name === ".git" && await isGitMetadata(path, entry)) continue;
+        if (entry.isDirectory() && nameForRoot(path, root) === ".pi-nf") {
           const children = await readdir(path, { withFileTypes: true });
-          if (entry.name === ".git" && children.some((child) => child.name === "HEAD" && child.isFile()) &&
-            children.some((child) => child.name === "objects" && child.isDirectory())) continue;
-          if (nameForRoot(path, root) === ".pi-nf" && !children.some((child) => child.name === ".git" && (child.isFile() || child.isDirectory()))) {
+          if (!children.some((child) => child.name === ".git" && (child.isFile() || child.isDirectory()))) {
             await flush();
             await discover(path);
             continue;
           }
-        }
-        if (entry.name === ".git" && entry.isFile()) {
-          const handle = await open(path, "r");
-          try {
-            const prefix = Buffer.alloc(8);
-            const { bytesRead } = await handle.read(prefix, 0, prefix.length, 0);
-            if (prefix.subarray(0, bytesRead).toString() === "gitdir: ") continue;
-          } finally { await handle.close(); }
         }
         if (statePath && entry.isFile() && [resolve(statePath), `${resolve(statePath)}-wal`, `${resolve(statePath)}-shm`].includes(path)) continue;
       }
