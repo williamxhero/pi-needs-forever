@@ -240,3 +240,40 @@ export function previewFromDraft(
   };
 }
 
+/** An explicitly reviewed contract file; a read/parse failure becomes a gap, never a guess. */
+export function previewExplicit(requestKey: string, cwd: string, contractPath: string): ContractPreview {
+  try {
+    const raw = readContractFile(resolve(cwd, contractPath));
+    const draft = recordOf(raw);
+    if (!draft) throw new Error("contract file must be a JSON object.");
+    return previewFromDraft(requestKey, "explicit", draft, []);
+  } catch (error) {
+    return previewFromDraft(
+      requestKey,
+      "explicit",
+      {},
+      [{ field: "contract", message: error instanceof Error ? error.message : String(error) }],
+    );
+  }
+}
+
+/** Project config first, then the issue itself, then an honest empty draft. */
+export function previewProjectOrIssue(input: {
+  requestKey: string;
+  request: IssueRequest;
+  cwd: string;
+  config: ReturnType<typeof findProjectConfig>;
+  issue: IssueSnapshot | null;
+  damagedReceiptPath: string | null;
+}): ContractPreview {
+  const projectGap = input.config.error ? [{ field: "project", message: input.config.error }] : [];
+  const receiptGap = input.damagedReceiptPath
+    ? [{ field: "receipt", message: `Existing receipt ${input.damagedReceiptPath} could not be read.` }]
+    : [];
+  if (input.config.file) {
+    const built = draftFromConfig(input.request, input.cwd, input.config.file, input.issue);
+    return previewFromDraft(input.requestKey, "project", built.draft, mergeGaps(built.gaps, projectGap));
+  }
+  const built = draftFromIssue(input.request, input.cwd, input.issue);
+  return previewFromDraft(input.requestKey, input.issue ? "issue" : "draft", built.draft, mergeGaps(built.gaps, projectGap, receiptGap));
+}

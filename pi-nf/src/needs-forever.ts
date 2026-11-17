@@ -7,12 +7,11 @@ import { auditDirectory } from "./audit.js";
 import { contractHash, readContractFile } from "./contract.js";
 import { Host } from "./host.js";
 import {
-  draftFromConfig,
-  draftFromIssue,
   findProjectConfig,
   issueReaderFromGh,
-  mergeGaps,
+  previewExplicit,
   previewFromDraft,
+  previewProjectOrIssue,
   resolveGitHubRepo,
 } from "./needs-contract.js";
 import { atomicJson, recordOf, repoSlug, requestKeyOf, safeJson, splitRequestKey, stringOf } from "./needs-paths.js";
@@ -233,43 +232,21 @@ export class NeedsForeverService implements NeedsForever {
     const existing = this.readReceipt(repo, request.issue);
     if (existing) {
       try {
-        const draft = readContractFile(existing.contractPath);
-        const raw = recordOf(draft);
-        if (raw) return previewFromDraft(requestKey, "existing", raw, []);
+        const draft = recordOf(readContractFile(existing.contractPath));
+        if (draft) return previewFromDraft(requestKey, "existing", draft, []);
       } catch {
-        // A damaged existing receipt falls through to a fresh preview and is reported below.
+        // A damaged receipt falls through to a fresh preview that reports the damage.
       }
     }
-
-    if (request.contractPath) {
-      try {
-        const raw = readContractFile(resolve(cwd, request.contractPath));
-        const draft = recordOf(raw);
-        if (!draft) throw new Error("contract file must be a JSON object.");
-        return previewFromDraft(requestKey, "explicit", draft, []);
-      } catch (error) {
-        const draft: Record<string, unknown> = {};
-        return previewFromDraft(
-          requestKey,
-          "explicit",
-          draft,
-          [{ field: "contract", message: error instanceof Error ? error.message : String(error) }],
-        );
-      }
-    }
-
-    const config = findProjectConfig(cwd);
-    const issue = await this.readIssue(repo, request.issue, cwd);
-    if (config.file) {
-      const built = draftFromConfig(request, cwd, config.file, issue);
-      return previewFromDraft(requestKey, "project", built.draft, mergeGaps(built.gaps, config.error ? [{ field: "project", message: config.error }] : []));
-    }
-    const built = draftFromIssue(request, cwd, issue);
-    return previewFromDraft(requestKey, issue ? "issue" : "draft", built.draft, mergeGaps(
-      built.gaps,
-      config.error ? [{ field: "project", message: config.error }] : [],
-      existing ? [{ field: "receipt", message: `Existing receipt ${existing.receiptPath} could not be read.` }] : [],
-    ));
+    if (request.contractPath) return previewExplicit(requestKey, cwd, request.contractPath);
+    return previewProjectOrIssue({
+      requestKey,
+      request,
+      cwd,
+      config: findProjectConfig(cwd),
+      issue: await this.readIssue(repo, request.issue, cwd),
+      damagedReceiptPath: existing ? existing.contractPath : null,
+    });
   }
 
   private canonicalContract(requestKey: string, contract: TaskContract): { directory: string; contractPath: string; stateDb: string; logPath: string; receiptPath: string; nfgPath: string } {
@@ -299,6 +276,31 @@ export class NeedsForeverService implements NeedsForever {
       await this.sleep(50);
     }
     throw new Error(`timed out waiting for pi-nf task ${taskId} to become readable: ${lastError instanceof Error ? lastError.message : String(lastError ?? "no error")}`);
+  }
+
+  private receiptFor(
+    requestKey: string,
+    contract: TaskContract,
+    contractHashValue: string,
+    paths: ReturnType<NeedsForeverService["canonicalContract"]>,
+    status: HandoffReceipt["status"],
+    pid: number | null,
+  ): HandoffReceipt {
+    return {
+      requestKey,
+      taskId: contract.task_id,
+      contractHash: contractHashValue,
+      workspace: contract.workspace,
+      stateDb: paths.stateDb,
+      contractPath: paths.contractPath,
+      logPath: paths.logPath,
+      receiptPath: paths.receiptPath,
+      nfgPath: paths.nfgPath,
+      startedAt: this.now().toISOString(),
+      status,
+      pid,
+      nfgVisible: existsSync(paths.nfgPath),
+    };
   }
 
   private async launch(
@@ -332,21 +334,7 @@ export class NeedsForeverService implements NeedsForever {
       throw error;
     }
 
-    const receipt: HandoffReceipt = {
-      requestKey,
-      taskId: contract.task_id,
-      contractHash: contractHashValue,
-      workspace: contract.workspace,
-      stateDb: paths.stateDb,
-      contractPath: paths.contractPath,
-      logPath: paths.logPath,
-      receiptPath: paths.receiptPath,
-      nfgPath: paths.nfgPath,
-      startedAt: this.now().toISOString(),
-      status: "running",
-      pid,
-      nfgVisible: existsSync(paths.nfgPath),
-    };
+    const receipt = this.receiptFor(requestKey, contract, contractHashValue, paths, "running", pid);
     this.writeReceipt(receipt);
     return { kind: "started", receipt };
   }
@@ -377,20 +365,7 @@ export class NeedsForeverService implements NeedsForever {
       return { kind: "rejected", preview, reason: "confirmation_required" };
     }
     if (orphan) {
-      const orphanReceipt: HandoffReceipt = {
-        requestKey: preview.requestKey,
-        taskId: preview.contract.task_id,
-        contractHash: preview.contractHash,
-        workspace: preview.contract.workspace,
-        stateDb: paths.stateDb,
-        contractPath: paths.contractPath,
-        logPath: paths.logPath,
-        receiptPath: paths.receiptPath,
-        nfgPath: paths.nfgPath,
-        startedAt: this.now().toISOString(),
-        status: "exited",
-        pid: null,
-      };
+      const orphanReceipt = this.receiptFor(preview.requestKey, preview.contract, preview.contractHash, paths, "exited", null);
       if (!request.restart) {
         return {
           kind: "conflict",
