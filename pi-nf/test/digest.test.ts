@@ -37,6 +37,17 @@ test("workspaceDigest scans a large file with bounded memory and repeatable resu
   for (const scan of scans) assert.ok(scan.peak_rss_kib < 192 * 1024, `peak RSS ${scan.peak_rss_kib} KiB exceeds 192 MiB`);
 });
 
+test("workspaceDigest bounds memory with several large files and many small files together", () => {
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL("./fixtures/digest-benchmark.js", import.meta.url)), "32", "257", "2", "8"], {
+    encoding: "utf8", timeout: 60_000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const scans = result.stdout.trim().split("\n").map((line) => JSON.parse(line) as { digest: string; peak_rss_kib: number });
+  assert.equal(scans.length, 2);
+  assert.equal(scans[0]!.digest, scans[1]!.digest);
+  for (const scan of scans) assert.ok(scan.peak_rss_kib < 192 * 1024, `peak RSS ${scan.peak_rss_kib} KiB exceeds 192 MiB`);
+});
+
 test("workspaceDigest distinguishes file names from content instead of concatenating ambiguously", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "pi-nf-digest-framing-"));
   try {
@@ -77,6 +88,30 @@ function nestedRepositories(workspace: string): void {
     assert.equal(execFileSync("git", ["-C", path, "check-ignore", "ignored.ts"], { encoding: "utf8" }).trim(), "ignored.ts");
   }
 }
+
+test("workspaceDigest keeps mixed many-file layouts deterministic and detects late nested source changes", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-digest-many-"));
+  try {
+    nestedRepositories(workspace);
+    for (const directory of [workspace, join(workspace, "alpha"), join(workspace, "beta")]) {
+      for (let i = 0; i < 19; i++) {
+        writeFileSync(join(directory, `source-${String(i).padStart(2, "0")}.ts`), Buffer.alloc(i === 9 ? 150_000 : i * 37, i));
+      }
+    }
+    const before = await workspaceDigest(workspace, null);
+    assert.equal(await workspaceDigest(workspace, null), before);
+    assert.equal(await workspaceDigest(workspace, null), before);
+    const task = contract(workspace, "require('node:fs').writeFileSync('beta/source-18.ts', 'changed late source')");
+    const result = await runCompletionGate({ task, baseline: [], state_path: null,
+      env: new NodeExecutionEnv({ cwd: workspace }), context: BACKGROUND_CONTEXT });
+    assert.equal(result.exit_code, 0);
+    assert.equal(result.workspace_before, before);
+    assert.notEqual(result.workspace_after, before);
+    assert.equal(result.passed, false);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
 
 for (const [label, script] of [
   ["tracked config", "fs.writeFileSync('alpha/config.json', '{}')"],
@@ -139,8 +174,10 @@ test("CompletionGate rejects a missing workspace instead of treating an incomple
 
 test("workspaceDigest rejects an unreadable file rather than returning a partial digest", async (t) => {
   const workspace = mkdtempSync(join(tmpdir(), "pi-nf-digest-read-error-"));
-  const file = join(workspace, "source.ts");
+  const file = join(workspace, "source-05-locked.ts");
   writeFileSync(file, "must be read");
+  // A denied file among readable siblings must still reject the whole scan.
+  for (let i = 0; i < 17; i++) writeFileSync(join(workspace, `source-${i}.ts`), "readable sibling");
   try {
     if (process.platform === "win32") {
       // A real exclusive Windows handle denies reads without changing machine ACLs.
