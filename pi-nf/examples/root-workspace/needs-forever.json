@@ -1,0 +1,15 @@
+{
+  "workspace": ".",
+  "goal": "Set alpha and beta to their independently checked ready values",
+  "acceptance": [
+    { "id": "A1", "text": "Alpha value is alpha-ready" },
+    { "id": "A2", "text": "Beta value is beta-ready" }
+  ],
+  "authorization": "Edit only projects/alpha/src/value.txt and projects/beta/src/value.txt. Preserve unrelated dirty and untracked work. Read root and deeper AGENTS.md before writes. No commit, merge, push or tracker update is authorized by this example.",
+  "verify": {
+    "argv": ["node", "verify.mjs"],
+    "timeout_seconds": 15,
+    "protected_files": ["verify.mjs", "projects/alpha/check.mjs", "projects/beta/check.mjs"]
+  },
+  "limits": { "max_worker_turns": 4, "max_minutes": 5 }
+}

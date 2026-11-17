@@ -88,6 +88,71 @@ is only a draft: the command refuses to start until the contract has explicit
 acceptance, authorization and an independent verifier. `--yes` cannot bypass a
 gap.
 
+## One root workspace with nested repositories
+
+Open Pi **at the project root** and keep using that session as the launcher and
+observer. A handoff starts one new background A at that same root; it does not
+replace the current chat or require one session per nested Git repository. A can
+work on multiple project-owned subdirectories in one task, and can set a working
+directory for an individual test or build command without changing the workspace.
+External paths, including symlink or junction targets outside the project, do not
+become authorized merely by appearing under the root.
+
+A small runnable example is in [`examples/root-workspace`](examples/root-workspace).
+From that directory as the workspace root, with Node on PATH, run:
+
+```bash
+node verify.mjs                  # initially fails both checks
+# Change projects/alpha/src/value.txt to alpha-ready and
+# projects/beta/src/value.txt to beta-ready, then:
+node verify.mjs                  # passes only when both checks pass
+```
+
+Its `needs-forever.json` is a project config, not a separate contract schema. For
+an actual task, adapt its goal, acceptance, authorization, verifier and protected
+files to the real requirement; do not treat these toy value checks as production
+acceptance. The fixed argv verifier starts at the root, calls each project's check
+with that command's own cwd, and returns failure if either fails. Protect the root
+verifier and independent nested checks. No `scope`, `projects`, or `verify.cwd`
+configuration is needed. After installing the extension, from the real project
+root preview `/needs-forever 454`, review the complete contract, then start with
+`/needs-forever 454 --yes`; use `--repo owner/repo` when selecting an issue in a
+specific repository. Preview gaps cannot be overridden by `--yes`.
+
+The new A must read the root `AGENTS.md` and applicable more-specific instructions
+before edits or mutating commands; it cannot assume the launcher's context was
+inherited. Preserve existing dirty and untracked work: no clean baseline, automatic
+stash/reset, or blanket staging is required. If ownership cannot be separated
+safely, stop and report the conflict. Use e.g. `git -C projects/alpha status` and
+`git -C projects/alpha add -- path/to/task-file`, inspect the staged paths, and
+use `gh ... --repo owner/alpha` explicitly rather than guessing from the root
+remote. Commit, merge, push, tracker updates and issue closure require the task's
+authorization and delivery gates; they are not categorically human-only. Respect
+STOP, dependency order, external blockers and time gates. For Chinese GitHub
+bodies use a UTF-8 no-BOM file and verify the uploaded body by readback.
+
+These are cooperative instructions, not OS-level isolation: arbitrary shell
+commands are not physically confined by `NodeExecutionEnv`. Register the root as
+the NFG workspace: the same task's read-only projection is published at
+`<root>/.pi-nf/<task_id>/audit.json`, not separately per child repository.
+
+The gate's workspace digest reserves the root `.pi-nf` directory for supervisor
+output (unless it is itself a Git repository) and the explicit state database and
+its WAL/SHM files. Git metadata directories with `HEAD` and `objects`, and Git
+worktree `.git` files, are excluded. Installed `node_modules` with npm's hidden
+lockfile, virtual environments with `pyvenv.cfg`, and pytest, ruff or mypy caches
+with a valid `CACHEDIR.TAG` signature have their ordinary generated payload
+excluded. A metadata-only directory scan discovers independent Git repositories
+at any depth inside these locations and root `.pi-nf`; their project files remain
+covered using workspace-relative paths. This scan does not follow links and its
+cost grows with the number of directories, even when generated payload is not
+hashed. Other similarly named directories and ordinary files are covered,
+including unknown `.coverage` files and unmarked caches. Consequently some
+generated writes may cause a conservative retry. Links are recorded, not
+followed; read errors fail the scan. Protected files are checked independently,
+even inside excluded locations. Cache markers are contextual evidence, not a
+security boundary against a deliberately forged marker.
+
 Receipts, canonical contracts and logs are stored under `~/.pi-nf` (override with
 `PI_NF_HOME`), outside the task workspace. A receipt also records whether the NFG
 projection existed at handshake time (`NFG visible`), so "started" is never reported
