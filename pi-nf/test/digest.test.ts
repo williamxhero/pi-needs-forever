@@ -75,6 +75,120 @@ test("workspaceDigest does not treat project settings, scratch source or worktre
   }
 });
 
+test("CompletionGate detects source changes in a cache-named independent repository", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-collision-"));
+  try {
+    const repo = join(workspace, "venv");
+    mkdirSync(repo);
+    execFileSync("git", ["init", "--quiet", repo]);
+    writeFileSync(join(repo, "main.ts"), "original");
+    const task = contract(workspace, "require('node:fs').writeFileSync('venv/main.ts', 'changed')");
+    const result = await runCompletionGate({ task, baseline: [], state_path: null,
+      env: new NodeExecutionEnv({ cwd: workspace }), context: BACKGROUND_CONTEXT });
+    assert.equal(result.exit_code, 0);
+    assert.equal(result.workspace_changed, true);
+    assert.equal(result.passed, false);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test("workspaceDigest covers source files whose names collide with cache names", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-collision-files-"));
+  try {
+    for (const name of ["venv", "node_modules", ".pytest_cache", ".pi-nf", ".coverage.prod.ts"]) {
+      const path = join(workspace, name);
+      writeFileSync(path, "original");
+      const before = await workspaceDigest(workspace, null);
+      writeFileSync(path, "changed");
+      assert.notEqual(await workspaceDigest(workspace, null), before, name);
+    }
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test("workspaceDigest covers unmarked cache-named directories and nested supervisor-like content", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-collision-dirs-"));
+  try {
+    for (const name of ["node_modules", "venv", ".pytest_cache", ".pi-nf", "htmlcov"]) {
+      const directory = join(workspace, "project", name);
+      mkdirSync(directory, { recursive: true });
+      const file = join(directory, "source.ts");
+      writeFileSync(file, "before");
+      const before = await workspaceDigest(workspace, null);
+      writeFileSync(file, "after");
+      assert.notEqual(await workspaceDigest(workspace, null), before, name);
+    }
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
+test("workspaceDigest covers cache-named source with an unrelated cache tag", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-cache-tag-"));
+  try {
+    const dir = join(workspace, ".pytest_cache");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "CACHEDIR.TAG"), "project notes");
+    writeFileSync(join(dir, "source.ts"), "before");
+    const before = await workspaceDigest(workspace, null);
+    writeFileSync(join(dir, "source.ts"), "after");
+    assert.notEqual(await workspaceDigest(workspace, null), before);
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
+test("workspaceDigest covers a regular .git file that is not worktree metadata", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-git-file-"));
+  try {
+    const file = join(workspace, ".git");
+    writeFileSync(file, "project configuration");
+    const before = await workspaceDigest(workspace, null);
+    writeFileSync(file, "changed configuration");
+    assert.notEqual(await workspaceDigest(workspace, null), before);
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
+test("workspaceDigest covers a non-repository .git directory", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-git-dir-"));
+  try {
+    const dir = join(workspace, ".git");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "source.ts"), "before");
+    const before = await workspaceDigest(workspace, null);
+    writeFileSync(join(dir, "source.ts"), "after");
+    assert.notEqual(await workspaceDigest(workspace, null), before);
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
+test("workspaceDigest covers unknown coverage and unmarked bytecode directories", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-unknown-generated-"));
+  try {
+    mkdirSync(join(workspace, "__pycache__"));
+    for (const name of [".coverage", ".coverage.worker1", ".coverage.prod.ts", "__pycache__/module.pyc"]) {
+      const file = join(workspace, name);
+      writeFileSync(file, "before");
+      const before = await workspaceDigest(workspace, null);
+      writeFileSync(file, "after");
+      assert.notEqual(await workspaceDigest(workspace, null), before, name);
+    }
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
+test("workspaceDigest covers a marked cache directory containing a Git worktree", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-worktree-cache-"));
+  try {
+    const repo = join(workspace, "repo");
+    execFileSync("git", ["init", "--quiet", repo]);
+    execFileSync("git", ["-C", repo, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-m", "initial", "--quiet"]);
+    const worktree = join(workspace, "venv");
+    execFileSync("git", ["-C", repo, "worktree", "add", "--quiet", "-b", "fixture", worktree]);
+    writeFileSync(join(worktree, "pyvenv.cfg"), "marker");
+    writeFileSync(join(worktree, "source.ts"), "before");
+    const before = await workspaceDigest(workspace, null);
+    writeFileSync(join(worktree, "source.ts"), "after");
+    assert.notEqual(await workspaceDigest(workspace, null), before);
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
 function nestedRepositories(workspace: string): void {
   for (const name of ["alpha", "beta"]) {
     const path = join(workspace, name);
@@ -139,13 +253,14 @@ for (const [label, script] of [
   });
 }
 
-for (const excluded of [".pi-nf", ".pytest_cache", "__pycache__"]) {
+for (const excluded of [".pytest_cache"]) {
   test(`CompletionGate protects a nested file independently of excluded ${excluded} writes`, async () => {
     const workspace = mkdtempSync(join(tmpdir(), "pi-nf-digest-protected-"));
     try {
       nestedRepositories(workspace);
       const directory = join(workspace, "alpha", excluded);
       mkdirSync(directory);
+      writeFileSync(join(directory, "CACHEDIR.TAG"), "Signature: 8a477f597d28d172789f06886806bc55\n");
       const file = `alpha/${excluded}/acceptance.mjs`;
       writeFileSync(join(workspace, file), "original");
       const task = contract(workspace, `require('node:fs').writeFileSync(${JSON.stringify(file)}, 'tampered')`);
@@ -276,13 +391,12 @@ test("workspaceDigest excludes only known dependency/cache metadata while retain
   try {
     nestedRepositories(workspace);
     const before = await workspaceDigest(workspace, null);
-    for (const directory of [".git", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache", ".hypothesis", ".mypy_cache", ".tox", "htmlcov"]) {
-      const path = join(workspace, "alpha", directory);
+    for (const [directory, marker] of [["node_modules", ".package-lock.json"], [".venv", "pyvenv.cfg"], ["venv", "pyvenv.cfg"], [".pytest_cache", "CACHEDIR.TAG"], [".ruff_cache", "CACHEDIR.TAG"], [".mypy_cache", "CACHEDIR.TAG"]]) {
+      const path = join(workspace, "alpha", directory!);
       mkdirSync(path, { recursive: true });
+      writeFileSync(join(path, marker!), marker === "CACHEDIR.TAG" ? "Signature: 8a477f597d28d172789f06886806bc55\n" : "generated marker");
       writeFileSync(join(path, "generated"), "cache changed");
     }
-    writeFileSync(join(workspace, "beta", ".coverage"), "coverage data");
-    writeFileSync(join(workspace, "beta", ".coverage.worker1"), "coverage data");
     assert.equal(await workspaceDigest(workspace, null), before);
     writeFileSync(join(workspace, "beta", ".coverage-config.ts"), "source, not coverage data");
     assert.notEqual(await workspaceDigest(workspace, null), before);

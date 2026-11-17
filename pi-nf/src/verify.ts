@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream, readFileSync, realpathSync, statSync } from "node:fs";
-import { readdir, readlink } from "node:fs/promises";
+import { open, readdir, readlink } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
@@ -82,29 +82,14 @@ export type GateInput = {
   context: Context;
 };
 
-const IGNORED_SEGMENTS = new Set([
-  ".git",
-  // Reserved supervisor output: audit projections and optional local handoff/state home.
-  // Protected files are checked separately, even inside excluded directories.
-  ".pi-nf",
-  // Installed dependency environments and known Python tool caches/reports only.
-  // In particular, project settings (.pi/.nf), scratch, worktrees and Git ignores are not caches.
-  "node_modules",
-  ".venv",
-  "venv",
-  "__pycache__",
-  ".pytest_cache",
-  ".ruff_cache",
-  ".hypothesis",
-  ".mypy_cache",
-  ".tox",
-  "htmlcov",
-]);
+function nameForRoot(path: string, workspace: string): string {
+  return relative(workspace, path).split(sep).join("/");
+}
 
 function excluded(path: string, workspace: string, statePath: string | null): boolean {
   const name = relative(workspace, path).split(sep).join("/");
-  if (name.split("/").some((segment) => IGNORED_SEGMENTS.has(segment))) return true;
-  if (name.split("/").some((segment) => segment === ".coverage" || segment.startsWith(".coverage."))) return true;
+  const segment = name.split("/").at(-1)!;
+  if (segment === ".git" || name === ".pi-nf") return true;
   if (!statePath) return false;
   const state = resolve(statePath);
   return path === state || path === `${state}-wal` || path === `${state}-shm`;
@@ -133,7 +118,39 @@ export async function workspaceDigest(workspace: string, statePath: string | nul
     };
     for (const entry of entries) {
       const path = resolve(directory, entry.name);
-      if (excluded(path, root, statePath)) continue;
+      if (excluded(path, root, statePath)) {
+        if (entry.isDirectory()) {
+          const children = await readdir(path, { withFileTypes: true });
+          if (entry.name === ".git" && children.some((child) => child.name === "HEAD" && child.isFile()) &&
+            children.some((child) => child.name === "objects" && child.isDirectory())) continue;
+          if (nameForRoot(path, root) === ".pi-nf" && !children.some((child) => child.name === ".git" && (child.isFile() || child.isDirectory()))) continue;
+        }
+        if (entry.name === ".git" && entry.isFile()) {
+          const handle = await open(path, "r");
+          try {
+            const prefix = Buffer.alloc(8);
+            const { bytesRead } = await handle.read(prefix, 0, prefix.length, 0);
+            if (prefix.subarray(0, bytesRead).toString() === "gitdir: ") continue;
+          } finally { await handle.close(); }
+        }
+        if (statePath && entry.isFile() && [resolve(statePath), `${resolve(statePath)}-wal`, `${resolve(statePath)}-shm`].includes(path)) continue;
+      }
+      if (entry.isDirectory() && ["node_modules", ".venv", "venv", ".pytest_cache", ".ruff_cache", ".mypy_cache"].includes(entry.name)) {
+        const children = await readdir(path, { withFileTypes: true });
+        const file = (name: string) => children.some((child) => child.name === name && child.isFile());
+        const repo = children.some((child) => child.name === ".git" && (child.isDirectory() || child.isFile()));
+        let tagged = false;
+        if (!repo && [".pytest_cache", ".ruff_cache", ".mypy_cache"].includes(entry.name) && file("CACHEDIR.TAG")) {
+          const handle = await open(resolve(path, "CACHEDIR.TAG"), "r");
+          try {
+            const signature = Buffer.alloc(43);
+            const { bytesRead } = await handle.read(signature, 0, signature.length, 0);
+            tagged = signature.subarray(0, bytesRead).toString() === "Signature: 8a477f597d28d172789f06886806bc55";
+          } finally { await handle.close(); }
+        }
+        if (!repo && ((entry.name === "node_modules" && file(".package-lock.json")) ||
+          ((entry.name === ".venv" || entry.name === "venv") && file("pyvenv.cfg")) || tagged)) continue;
+      }
       const name = relative(root, path).split(sep).join("/");
       // JSON tuples frame type, path and payload unambiguously, even for delimiter-like names.
       // Hash file bytes separately so stream chunk boundaries never enter the framing.

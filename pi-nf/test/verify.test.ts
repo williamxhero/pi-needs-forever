@@ -177,16 +177,12 @@ test("workspaceDigest ignores the state database and test caches", async () => {
     const state = join(workspace, "state.sqlite");
     writeFileSync(state, "before");
     mkdirSync(join(workspace, ".pytest_cache"));
+    writeFileSync(join(workspace, ".pytest_cache", "CACHEDIR.TAG"), "Signature: 8a477f597d28d172789f06886806bc55\n");
     writeFileSync(join(workspace, ".pytest_cache", "cache"), "before");
-    mkdirSync(join(workspace, "__pycache__"));
-    writeFileSync(join(workspace, "__pycache__", "module.pyc"), "before");
-    writeFileSync(join(workspace, ".coverage"), "before");
     const before = await workspaceDigest(workspace, state);
     writeFileSync(state, "after");
     writeFileSync(`${state}-wal`, "wal");
     writeFileSync(join(workspace, ".pytest_cache", "cache"), "after");
-    writeFileSync(join(workspace, "__pycache__", "module.pyc"), "after");
-    writeFileSync(join(workspace, ".coverage"), "after");
     assert.equal(await workspaceDigest(workspace, state), before);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
