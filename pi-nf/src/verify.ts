@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync, realpathSync, statSync } from "node:fs";
-import { readdir, readFile, readlink } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { createReadStream, readFileSync, realpathSync, statSync } from "node:fs";
+import { readdir, readlink } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { ProtectedBaseline, TaskContract } from "./types.js";
@@ -84,10 +84,11 @@ export type GateInput = {
 
 const IGNORED_SEGMENTS = new Set([
   ".git",
-  ".pi",
-  ".nf",
-  ".scratch",
-  ".worktrees",
+  // Reserved supervisor output: audit projections and optional local handoff/state home.
+  // Protected files are checked separately, even inside excluded directories.
+  ".pi-nf",
+  // Installed dependency environments and known Python tool caches/reports only.
+  // In particular, project settings (.pi/.nf), scratch, worktrees and Git ignores are not caches.
   "node_modules",
   ".venv",
   "venv",
@@ -101,7 +102,7 @@ const IGNORED_SEGMENTS = new Set([
 ]);
 
 function excluded(path: string, workspace: string, statePath: string | null): boolean {
-  const name = relative(workspace, path).replaceAll("\\", "/");
+  const name = relative(workspace, path).split(sep).join("/");
   if (name.split("/").some((segment) => IGNORED_SEGMENTS.has(segment))) return true;
   if (name.split("/").some((segment) => segment === ".coverage" || segment.startsWith(".coverage."))) return true;
   if (!statePath) return false;
@@ -113,18 +114,26 @@ export async function workspaceDigest(workspace: string, statePath: string | nul
   const root = resolve(workspace);
   const hash = createHash("sha256");
   const walk = async (directory: string): Promise<void> => {
-    const entries = (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name));
+    // Code-unit ordering does not depend on the host locale.
+    const entries = (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
     for (const entry of entries) {
       const path = resolve(directory, entry.name);
       if (excluded(path, root, statePath)) continue;
-      const name = relative(root, path).replaceAll("\\", "/");
-      hash.update(name);
+      const name = relative(root, path).split(sep).join("/");
+      // JSON tuples frame type, path and payload unambiguously, even for delimiter-like names.
+      // Hash file bytes separately so stream chunk boundaries never enter the framing.
       if (entry.isSymbolicLink()) {
-        hash.update(`link:${await readlink(path)}`);
+        hash.update(`${JSON.stringify(["link", name, await readlink(path)])}\n`);
       } else if (entry.isDirectory()) {
+        hash.update(`${JSON.stringify(["directory", name])}\n`);
         await walk(path);
       } else if (entry.isFile()) {
-        hash.update(await readFile(path));
+        const content = createHash("sha256");
+        // Sequential streams bound both file buffers and open handles, independent of file size.
+        for await (const chunk of createReadStream(path)) content.update(chunk);
+        hash.update(`${JSON.stringify(["file", name, content.digest("hex")])}\n`);
+      } else {
+        throw new Error(`Cannot digest unsupported filesystem entry: ${path}`);
       }
     }
   };
