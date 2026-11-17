@@ -136,6 +136,19 @@ commands are not physically confined by `NodeExecutionEnv`. Register the root as
 the NFG workspace: the same task's read-only projection is published at
 `<root>/.pi-nf/<task_id>/audit.json`, not separately per child repository.
 
+The gate's workspace digest reserves the root `.pi-nf` directory for supervisor
+output (unless it is itself a Git repository) and the explicit state database and
+its WAL/SHM files. Git metadata directories with `HEAD` and `objects`, and Git
+worktree `.git` files, are excluded. Installed `node_modules` with npm's hidden
+lockfile, virtual environments with `pyvenv.cfg`, and pytest, ruff or mypy caches
+with a valid `CACHEDIR.TAG` signature are excluded unless they contain a `.git`
+file or directory. Other similarly named directories and ordinary files are
+covered, including unknown `.coverage` files and unmarked caches. Consequently
+some generated writes may cause a conservative retry. Links are recorded, not
+followed; read errors fail the scan. Protected files are checked independently,
+even inside excluded locations. Cache markers are contextual evidence, not a
+security boundary against a deliberately forged marker.
+
 Receipts, canonical contracts and logs are stored under `~/.pi-nf` (override with
 `PI_NF_HOME`), outside the task workspace. A receipt also records whether the NFG
 projection existed at handshake time (`NFG visible`), so "started" is never reported
