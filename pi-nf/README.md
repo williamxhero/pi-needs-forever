@@ -76,7 +76,7 @@ and observer; NFG is the live display.
 /needs-forever 454 --yes           start after reviewing a complete preview
 /needs-forever 454 --contract task.json
 /needs-forever 454 --restart       recover a dead handoff explicitly
-/needs-forever status 454          show the handoff receipt
+/needs-forever status [454]        show one handoff receipt, or all of them
 /needs-forever help
 ```
 
@@ -89,13 +89,16 @@ acceptance, authorization and an independent verifier. `--yes` cannot bypass a
 gap.
 
 Receipts, canonical contracts and logs are stored under `~/.pi-nf` (override with
-`PI_NF_HOME`), outside the task workspace. The same module is available without
+`PI_NF_HOME`), outside the task workspace. A receipt also records whether the NFG
+projection existed at handshake time (`NFG visible`), so "started" is never reported
+as "visible". The same module is available without
 Pi:
 
 ```bash
 node dist/src/cli.js needs --issue 454 --dry-run
 node dist/src/cli.js needs --issue 454 --yes
 node dist/src/cli.js needs status --issue 454
+node dist/src/cli.js needs status            # list every receipt
 node dist/src/cli.js recover --db ~/.pi-nf/tasks/owner-repo/454/state.sqlite
 ```
 

@@ -4,7 +4,8 @@ import { writeAudit } from "./audit.js";
 import { Host } from "./host.js";
 import { startWebServer } from "./web.js";
 import { createDefaultModels, resolveModelRef } from "./models.js";
-import { createNeedsForever, formatPreview, formatStartResult, formatReceipt } from "./needs-forever.js";
+import { createNeedsForever } from "./needs-forever.js";
+import { formatPreview, formatReceipt, formatReceiptList, formatStartResult } from "./needs-forever-command.js";
 import type { SupervisionStatus } from "./types.js";
 
 function printStatus(status: SupervisionStatus): void {
@@ -35,7 +36,7 @@ Usage:
   pi-nf web --db <state.sqlite> [--port 8787]
   pi-nf audit --db <state.sqlite> [--out <directory>] [--no-thinking] [--json]
   pi-nf needs --issue <number> [--repo owner/name] [--cwd path] [--dry-run] [--yes] [--contract path] [--restart] [--json]
-  pi-nf needs status --issue <number> [--repo owner/name] [--cwd path] [--json]
+  pi-nf needs status [--issue <number>] [--repo owner/name] [--cwd path] [--json]
   pi-nf recover --db <state.sqlite> [--model provider/model] [--json]
 
 start/send/pause/resume/recover also refresh the read-only NFG projection under
@@ -127,9 +128,9 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (command === "needs") {
-    if (!values.issue) throw new Error("needs requires --issue <number>");
-    const issue = Number(values.issue);
-    if (!Number.isInteger(issue) || issue <= 0) throw new Error("--issue must be a positive integer");
+    if (!values.issue && positionals[1] !== "status") throw new Error("needs requires --issue <number>");
+    const issue = values.issue ? Number(values.issue) : 0;
+    if (values.issue && (!Number.isInteger(issue) || issue <= 0)) throw new Error("--issue must be a positive integer");
     const needs = createNeedsForever(values.cwd ? { cwd: values.cwd } : {});
     const request = {
       repo: values.repo ?? "",
@@ -141,6 +142,12 @@ async function main(argv: string[]): Promise<number> {
     };
     const wantsStatus = positionals[1] === "status";
     if (wantsStatus) {
+      if (!issue) {
+        const receipts = await needs.list();
+        if (values.json) console.log(JSON.stringify(receipts, null, 2));
+        else console.log(formatReceiptList(receipts));
+        return 0;
+      }
       const receipt = await needs.inspect(request);
       if (values.json) console.log(JSON.stringify(receipt, null, 2));
       else console.log(receipt ? formatReceipt(receipt) : `No handoff receipt for #${issue}.`);

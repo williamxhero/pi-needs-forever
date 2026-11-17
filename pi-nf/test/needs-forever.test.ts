@@ -5,15 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createNeedsForever,
-  createNeedsForeverExtension,
-  formatHelp,
-  parseNeedsForeverCommand,
+  DetachedCliRuntime,
   type HandoffLaunch,
   type HandoffRuntime,
   type IssueSnapshot,
   type NeedsForever,
-  DetachedCliRuntime,
 } from "../src/needs-forever.js";
+import {
+  createNeedsForeverExtension,
+  formatHelp,
+  parseNeedsForeverCommand,
+} from "../src/needs-forever-command.js";
 import registerNeedsForever from "../src/extension.js";
 import { mkdirSync as mkdir, readFileSync as readFile } from "node:fs";
 import { createModels } from "@earendil-works/pi-ai/models";
@@ -29,9 +31,13 @@ class FakeRuntime implements HandoffRuntime {
   alive = true;
   pid: number | null = 4242;
 
+  /** Mirrors the real child: a durable state database appears after launch. */
+  writesDb = true;
+
   async launch(input: HandoffLaunch): Promise<{ pid: number | null }> {
     this.launches.push(input);
     this.alive = true;
+    if (this.writesDb) writeFileSync(input.dbPath, "");
     return { pid: this.pid };
   }
 
@@ -122,6 +128,58 @@ test("missing verifier is a gap and --yes cannot bypass it", async () => {
     assert.equal(result.kind, "rejected");
     assert.equal(result.kind === "rejected" ? result.reason : null, "gaps");
     assert.equal(data.runtime.launches.length, 0);
+  } finally {
+    data.cleanup();
+  }
+});
+
+test("--restart alone never confirms a brand-new task", async () => {
+  const data = fixture();
+  try {
+    const result = await data.needs.start({ repo: "owner/repo", issue: 454, cwd: data.workspace, restart: true });
+    assert.equal(result.kind, "rejected");
+    assert.equal(result.kind === "rejected" ? result.reason : null, "confirmation_required");
+    assert.equal(data.runtime.launches.length, 0);
+  } finally {
+    data.cleanup();
+  }
+});
+
+test("an orphan state database conflicts until an explicit, hash-checked restart", async () => {
+  const data = fixture();
+  try {
+    data.runtime.writesDb = false;
+    const preview = await data.needs.preview({ repo: "owner/repo", issue: 454, cwd: data.workspace });
+    const dbPath = join(data.home, "tasks", "owner-repo", "454", "state.sqlite");
+    mkdir(join(data.home, "tasks", "owner-repo", "454"), { recursive: true });
+    const models = createModels();
+    const faux = fauxProvider({ models: [{ id: "faux-model", name: "Faux Model" }] });
+    models.setProvider(faux.provider);
+    faux.setResponses([fauxAssistantMessage("ok")]);
+    const host = await Host.open({
+      storage: await openNodeSqliteStorage(dbPath),
+      models,
+      model: { provider: "faux", modelId: "faux-model" },
+      contract: preview.contract,
+      db_path: dbPath,
+      judge: new FixtureJudge({ action: "WAIT_EXTERNAL", reason: "fixture", evidence_ids: [], next_message: "", external: { missing: "x", attempted: [], y: "y", why_no_other_work: "y", resume_when: "z" } }),
+    });
+    try {
+      await host.start();
+      await host.waitForIdle();
+    } finally {
+      await host.close();
+    }
+
+    const conflict = await data.needs.start({ repo: "owner/repo", issue: 454, cwd: data.workspace, yes: true });
+    assert.equal(conflict.kind, "conflict");
+    assert.match(conflict.kind === "conflict" ? conflict.reason : "", /--restart/);
+    assert.equal(data.runtime.launches.length, 0);
+
+    const recovered = await data.needs.start({ repo: "owner/repo", issue: 454, cwd: data.workspace, restart: true });
+    assert.equal(recovered.kind, "started");
+    assert.equal(data.runtime.launches.length, 1);
+    assert.equal(data.runtime.launches[0]?.mode, "recover");
   } finally {
     data.cleanup();
   }
@@ -222,6 +280,10 @@ test("command parser supports Chinese text, flags, status and help", () => {
   assert.equal(contract.request.contractPath, "task.json");
   const status = parseNeedsForeverCommand("status 454");
   assert.equal(status.mode, "status");
+  assert.equal(parseNeedsForeverCommand("status").mode, "status");
+  assert.equal(parseNeedsForeverCommand("status").request.issue, 0);
+  assert.throws(() => parseNeedsForeverCommand("454 455"), /multiple issue numbers/);
+  assert.throws(() => parseNeedsForeverCommand("--contract"), /requires a value/);
   assert.equal(parseNeedsForeverCommand("help").mode, "help");
   assert.match(formatHelp(), /new A session|NEW A session/);
 });
@@ -260,6 +322,10 @@ test("Pi extension is a thin renderer over NeedsForever", async () => {
       calls.push(`inspect:${typeof request === "string" ? request : request.issue}`);
       return null;
     },
+    async list() {
+      calls.push("list");
+      return [];
+    },
   };
   const commands: { name: string; handler: (args: string, ctx: { cwd: string; ui: { notify(message: string, level?: "info" | "warning" | "error"): void } }) => Promise<void> }[] = [];
   const pi = {
@@ -282,8 +348,10 @@ test("Pi extension is a thin renderer over NeedsForever", async () => {
   await commands[0]!.handler("454 --yes", ctx);
   assert.deepEqual(calls, ["preview:454:C:/work", "start:454:true:C:/work"]);
   await commands[0]!.handler("status 454", ctx);
-  assert.deepEqual(calls, ["preview:454:C:/work", "start:454:true:C:/work", "inspect:454"]);
-  assert.equal(notices.length, 3);
+  await commands[0]!.handler("status", ctx);
+  assert.deepEqual(calls, ["preview:454:C:/work", "start:454:true:C:/work", "inspect:454", "list"]);
+  assert.equal(notices.length, 4);
+  assert.match(notices[3]!.message, /No handoff receipts yet/);
   assert.match(notices[0]!.message, /Needs Forever preview/);
 });
 
@@ -385,6 +453,24 @@ test("the handoff receipt names the same NFG projection a real pi-nf task publis
     assert.equal(started.receipt.nfgPath, join(auditDirectory(data.workspace, "issue-454"), "audit.json"));
     assert.equal(started.receipt.nfgPath, published.path);
     assert.ok(existsSync(started.receipt.nfgPath));
+  } finally {
+    data.cleanup();
+  }
+});
+
+
+test("receipt inventory is read-only, newest first, and skips damaged files", async () => {
+  const data = fixture();
+  try {
+    const started = await data.needs.start({ repo: "owner/repo", issue: 454, cwd: data.workspace, yes: true });
+    assert.equal(started.kind, "started");
+    if (started.kind !== "started") throw new Error("expected started");
+    assert.equal(started.receipt.nfgVisible, false, "no projection exists yet at handshake time");
+    writeFileSync(join(data.home, "handoff", "owner-repo", "999.json"), "{ not json");
+    const receipts = await data.needs.list();
+    assert.deepEqual(receipts.map((receipt) => receipt.requestKey), ["owner/repo#454"]);
+    assert.equal(receipts[0]?.status, "running");
+    assert.equal((await data.needs.inspect("owner/repo#454"))?.taskId, "issue-454");
   } finally {
     data.cleanup();
   }
