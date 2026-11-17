@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { auditDirectory, readAudit, writeAudit } from "../src/audit.js";
 import { Host } from "../src/host.js";
@@ -79,7 +79,7 @@ test("audit projects a DONE round without inventing a delivery", async () => {
     ]);
 
     const audit = await readAudit(db);
-    assert.equal(audit.schema_version, 1);
+    assert.equal(audit.schema_version, 2);
     assert.equal(audit.engine, "pi-nf");
     assert.equal(audit.task_id, "audit-task");
     assert.equal(audit.contract.goal, "audit projection");
@@ -181,6 +181,66 @@ test("writeAudit publishes an atomic projection inside the task workspace", asyn
     const printed = JSON.parse(output) as { engine: string; task_id: string };
     assert.equal(printed.engine, "pi-nf");
     assert.equal(printed.task_id, "audit-task");
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+
+test("audit v2 publishes a bounded, redacted transcript with stable IDs", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-audit-transcript-"));
+  const db = join(workspace, "state.sqlite");
+  try {
+    let calls = 0;
+    const judge: Judge = {
+      async decide(snapshot) {
+        calls += 1;
+        const evidence = snapshot.evidence[0];
+        assert.ok(evidence);
+        return { action: "DONE", reason: "tool evidence", evidence_ids: [evidence.id], next_message: "", external: null };
+      },
+    };
+    await runTask(workspace, db, judge, { max_worker_turns: null, max_minutes: null }, [
+      fauxAssistantMessage([
+        fauxThinking("private thought sk-abcdefghijklmnop"),
+        fauxToolCall("bash", { command: "echo transcript" }),
+      ], { stopReason: "toolUse" }),
+      fauxAssistantMessage("finished with evidence"),
+    ]);
+
+    const audit = await readAudit(db);
+    assert.equal(audit.schema_version, 2);
+    assert.equal(audit.transcript.window.limit, 200);
+    assert.equal(audit.transcript.window.has_more, false);
+    assert.equal(audit.transcript.stale_after_ms, 5_000);
+    assert.equal(audit.transcript.items[0]?.id, audit.transcript.window.oldest_id);
+
+    const text = audit.transcript.items.find((item) => item.kind === "assistant" && item.text.includes("finished"));
+    assert.ok(text);
+    const thinking = audit.transcript.items.find((item) => item.kind === "thinking");
+    assert.ok(thinking);
+    assert.match(thinking.text, /\[REDACTED\]/);
+    assert.doesNotMatch(thinking.text, /sk-abcdefghijklmnop/);
+    const call = audit.transcript.items.find((item) => item.kind === "tool_call");
+    assert.equal(call?.tool_name, "bash");
+    assert.ok(call?.tool_call_id);
+    const result = audit.transcript.items.find((item) => item.kind === "tool_result");
+    assert.equal(result?.tool_call_id, call?.tool_call_id);
+    assert.match(result?.text ?? "", /transcript/);
+    assert.ok(audit.transcript.items.some((item) => item.kind === "decision"));
+
+    const again = await readAudit(db);
+    assert.deepEqual(again.transcript.items.map((item) => item.id), audit.transcript.items.map((item) => item.id));
+    assert.equal(JSON.stringify(again.transcript), JSON.stringify(audit.transcript));
+
+    const withoutThinking = await readAudit(db, undefined, { includeThinking: false });
+    assert.equal(withoutThinking.transcript.items.some((item) => item.kind === "thinking"), false);
+
+    const windowed = await readAudit(db, undefined, { transcriptLimit: 2 });
+    assert.equal(windowed.transcript.items.length, 2);
+    assert.equal(windowed.transcript.window.limit, 2);
+    assert.equal(windowed.transcript.window.has_more, true);
+    assert.equal(windowed.transcript.window.oldest_id, windowed.transcript.items[0]?.id);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }

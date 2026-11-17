@@ -2,7 +2,9 @@
 
 pi-nf is the first durable implementation of **Needs Forever** supervision on top of
 [`@earendil-works/pi-durable`](https://www.npmjs.com/package/@earendil-works/pi-durable).
-It is a standalone host, not a Codex plugin and not a Pi coding-agent extension.
+It is a standalone durable host. It also ships an optional Pi extension command,
+`/needs-forever`, which launches a pi-nf handoff task and leaves the current Pi
+session as a launcher/observer.
 
 ## What works in this build (SPEC 1)
 
@@ -54,6 +56,48 @@ These are later SPECs, not hidden behavior:
 - **Full task-graph UI**: the built-in web page is a read-only status projection, not the complete NFG interaction surface.
 - **Provider/API probing**: C2 currently grounds local workspace artifacts and observed failures. It does not make arbitrary network calls or prove provider authorization/quota.
 - Migrating old Codex `state.json`, thread IDs or event logs.
+
+## Pi command `/needs-forever`
+
+Build the package, then install its local Pi package entry:
+
+```bash
+npm run build
+pi install D:/Pi/pi-nf/pi-nf
+```
+
+The command creates a **new A session** (a pi-nf handoff). The current Pi session
+does not become A and does not receive the new A's transcript. It is the launcher
+and observer; NFG is the live display.
+
+```text
+/needs-forever 454                 preview the issue contract; does not start
+/needs-forever 454 --dry-run       explicit preview only
+/needs-forever 454 --yes           start after reviewing a complete preview
+/needs-forever 454 --contract task.json
+/needs-forever 454 --restart       recover a dead handoff explicitly
+/needs-forever status 454          show the handoff receipt
+/needs-forever help
+```
+
+Issue resolution uses the current repository's GitHub `origin`, the issue's
+markdown acceptance checklist, and a project `.needs-forever.json` (or
+`needs-forever.json`) for authorization and the fixed-argv verifier. See
+[`examples/needs-forever.json`](examples/needs-forever.json). A prose-only issue
+is only a draft: the command refuses to start until the contract has explicit
+acceptance, authorization and an independent verifier. `--yes` cannot bypass a
+gap.
+
+Receipts, canonical contracts and logs are stored under `~/.pi-nf` (override with
+`PI_NF_HOME`), outside the task workspace. The same module is available without
+Pi:
+
+```bash
+node dist/src/cli.js needs --issue 454 --dry-run
+node dist/src/cli.js needs --issue 454 --yes
+node dist/src/cli.js needs status --issue 454
+node dist/src/cli.js recover --db ~/.pi-nf/tasks/owner-repo/454/state.sqlite
+```
 
 ## Install and test
 
@@ -128,9 +172,18 @@ node dist/src/cli.js audit --db data/task.sqlite --out D:/work/example --json
 ```
 
 NFG (in the `needs-forever` repository, `src/NFG/pi-nf.ts`) discovers
-`.pi-nf/*/audit.json` in each workspace it already catalogs and renders the task
-with the fields NFG already has: status, phase, goal, acceptance items, rounds,
-decisions, route audit and delivery evidence. No NFG field is added for pi-nf.
+`.pi-nf/*/audit.json` in each workspace it already catalogs. The projection is
+`schema_version: 2` with a bounded, redacted transcript of A's assistant text,
+thinking, tool calls/results, B directions, C decisions and verification. NFG
+renders a two-column read-only workspace for those tasks: live conversation on
+the left and the existing stage/round/route/verification view on the right.
+v1 projections and Codex tasks keep the old single-column view.
+
+The transcript window is replaced on each poll; stable item IDs make refreshes
+idempotent. `window.has_more` means older items were omitted. Thinking is
+collapsed by default and can be disabled with `audit --no-thinking` or
+`writeAudit({ includeThinking: false })`; content is redacted and bounded before
+it reaches disk.
 
 pi-nf tasks are read-only in NFG: pause/resume/delete stay with this CLI because
 they need the pi-nf writer lease. A round shows a received direction only when

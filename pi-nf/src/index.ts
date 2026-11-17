@@ -39,3 +39,22 @@ export { startWebServer } from "./web.js";
 export { auditDirectory, readAudit, writeAudit } from "./audit.js";
 export type { NfAudit, NfAuditDelivery, NfAuditEvent, NfAuditRound, WriteAuditOptions } from "./audit.js";
 export type { RunningWebServer, WebServerOptions } from "./web.js";
+
+export { createNeedsForever, createNeedsForeverExtension, DetachedCliRuntime, formatGaps, formatHelp, formatPreview, formatReceipt, formatStartResult, parseNeedsForeverCommand, resolveGitHubRepo } from "./needs-forever.js";
+export type {
+  ContractGap,
+  ContractPreview,
+  HandoffLaunch,
+  HandoffReceipt,
+  HandoffRuntime,
+  IssueReader,
+  IssueRequest,
+  IssueSnapshot,
+  LaunchMode,
+  NeedsForever,
+  NeedsForeverOptions,
+  ParsedNeedsForeverCommand,
+  PiExtensionApi,
+  PiExtensionContext,
+  StartResult,
+} from "./needs-forever.js";
