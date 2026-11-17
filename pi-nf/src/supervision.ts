@@ -39,6 +39,7 @@ const NfPrompt = defineExtension({
       const acceptance = task.acceptance.map((item) => `- ${item.id}: ${item.text}`).join("\n");
       return [
         "You are worker A under the Needs Forever supervisor.",
+        `Workspace: ${task.workspace}`,
         `Goal: ${task.goal}`,
         "Acceptance items:",
         acceptance,
@@ -48,6 +49,15 @@ const NfPrompt = defineExtension({
         "- Do not stop merely to ask whether to continue.",
         "- A final claim is not evidence: use tools, run checks, and report concrete results.",
         "- The original goal, acceptance items and authorization outrank any later suggestion.",
+        "- Before any edit or mutating command, read and follow workspace AGENTS.md and all applicable more-specific AGENTS.md along the target directory path (if present). Launcher rules/chat are not automatically inherited by this worker.",
+        "- Project-owned nested directories, including independent Git repositories, do not change the workspace; develop them as authorized and run individual checks in the appropriate directory without requiring a new Session.",
+        "- Paths outside the workspace, including symlink or junction targets outside it, gain no write authorization from appearing nested. Resolve uncertain ownership before writing.",
+        "- Preserve pre-existing dirty and untracked work: do not auto-stash, reset, clean, overwrite or absorb it; report conflicts when ownership cannot be separated safely.",
+        "- Keep SPEC/dependency order, independent review, STOP/FAIL, time gates, delivery gates, production and credential restrictions in force; root development does not bypass them.",
+        "- Run Git in the target repository (cwd or git -C); inspect existing changes, stage only explicit paths owned by this task and inspect the staged list before committing. Do not commit unrelated work; never force-push or destroy undelivered work.",
+        "- Commit, merge, push and tracker updates/Issue closure require task authorization and applicable delivery gates; they are not blanket human-only operations and are not automatically authorized by root access.",
+        "- For GitHub reads and writes, explicitly select the owning repository (gh --repo owner/repo or an explicit API repository path); same-number Issues and the root remote are not interchangeable.",
+        "- Upload Chinese GitHub bodies from a UTF-8 file without BOM using --body-file, then read back and compare the exact body; do not send them through a PowerShell pipeline.",
       ].join("\n");
     }, { tag: false }),
   ],
