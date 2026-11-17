@@ -93,6 +93,67 @@ test("CompletionGate detects source changes in a cache-named independent reposit
   }
 });
 
+test("CompletionGate detects changes in a repository deep inside a marked venv", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-deep-cache-"));
+  try {
+    const repo = join(workspace, "venv", "projects", "alpha");
+    mkdirSync(repo, { recursive: true });
+    writeFileSync(join(workspace, "venv", "pyvenv.cfg"), "marker");
+    execFileSync("git", ["init", "--quiet", repo]);
+    writeFileSync(join(repo, "source.ts"), "before");
+    const task = contract(workspace, "require('node:fs').writeFileSync('venv/projects/alpha/source.ts', 'after')");
+    const result = await runCompletionGate({ task, baseline: [], state_path: null,
+      env: new NodeExecutionEnv({ cwd: workspace }), context: BACKGROUND_CONTEXT });
+    assert.equal(result.exit_code, 0);
+    assert.equal(result.workspace_changed, true);
+    assert.equal(result.passed, false);
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
+test("workspaceDigest discovers deep repositories in generated containers without hashing payload or following links", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-discovery-"));
+  const outside = mkdtempSync(join(tmpdir(), "pi-nf-discovery-outside-"));
+  try {
+    const origin = join(workspace, "origin");
+    execFileSync("git", ["init", "--quiet", origin]);
+    execFileSync("git", ["-C", origin, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-m", "initial", "--quiet"]);
+    for (const [container, marker, content] of [["node_modules", ".package-lock.json", "marker"], [".pytest_cache", "CACHEDIR.TAG", "Signature: 8a477f597d28d172789f06886806bc55\n"], [".pi-nf", "audit.json", "state"]]) {
+      const dir = join(workspace, container!);
+      mkdirSync(dir);
+      writeFileSync(join(dir, marker!), content!);
+      mkdirSync(join(dir, "projects", "deeper"), { recursive: true });
+      const repo = join(dir, "projects", "deeper", "alpha");
+      execFileSync("git", ["init", "--quiet", repo]);
+      writeFileSync(join(repo, "source.ts"), "before");
+    }
+    const worktree = join(workspace, "node_modules", "projects", "worktree");
+    execFileSync("git", ["-C", origin, "worktree", "add", "--quiet", "-b", "fixture", worktree]);
+    writeFileSync(join(worktree, "source.ts"), "before");
+    symlinkSync(outside, join(workspace, "node_modules", "external"), process.platform === "win32" ? "junction" : "dir");
+    let before = await workspaceDigest(workspace, null);
+    writeFileSync(join(workspace, "node_modules", "generated"), "changed");
+    writeFileSync(join(outside, "external.ts"), "changed");
+    assert.equal(await workspaceDigest(workspace, null), before);
+    for (const repo of [join(workspace, "node_modules", "projects", "deeper", "alpha"), join(workspace, ".pytest_cache", "projects", "deeper", "alpha"), join(workspace, ".pi-nf", "projects", "deeper", "alpha"), worktree]) {
+      writeFileSync(join(repo, "source.ts"), "after");
+      const after = await workspaceDigest(workspace, null);
+      assert.notEqual(after, before, repo);
+      before = after;
+    }
+    const added = join(workspace, ".pi-nf", "another", "new-repo");
+    mkdirSync(added, { recursive: true });
+    execFileSync("git", ["init", "--quiet", added]);
+    writeFileSync(join(added, "new.ts"), "new");
+    const withRepo = await workspaceDigest(workspace, null);
+    assert.notEqual(withRepo, before);
+    rmSync(added, { recursive: true, force: true });
+    assert.equal(await workspaceDigest(workspace, null), before);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test("workspaceDigest covers source files whose names collide with cache names", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "pi-nf-collision-files-"));
   try {

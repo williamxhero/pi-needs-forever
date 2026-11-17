@@ -86,7 +86,7 @@ function nameForRoot(path: string, workspace: string): string {
   return relative(workspace, path).split(sep).join("/");
 }
 
-function excluded(path: string, workspace: string, statePath: string | null): boolean {
+function exclusionCandidate(path: string, workspace: string, statePath: string | null): boolean {
   const name = relative(workspace, path).split(sep).join("/");
   const segment = name.split("/").at(-1)!;
   if (segment === ".git" || name === ".pi-nf") return true;
@@ -98,6 +98,36 @@ function excluded(path: string, workspace: string, statePath: string | null): bo
 export async function workspaceDigest(workspace: string, statePath: string | null): Promise<string> {
   const root = resolve(workspace);
   const hash = createHash("sha256");
+  // Generated payload is not hashed, but its directories may contain independent
+  // repositories. Discover them sequentially without following links or Git metadata.
+  const discover = async (directory: string): Promise<void> => {
+    const entries = (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === ".git") continue;
+      const path = resolve(directory, entry.name);
+      const children = await readdir(path, { withFileTypes: true });
+      const git = children.find((child) => child.name === ".git");
+      let repository = false;
+      if (git?.isDirectory()) {
+        const metadata = await readdir(resolve(path, ".git"), { withFileTypes: true });
+        repository = metadata.some((child) => child.name === "HEAD" && child.isFile()) &&
+          metadata.some((child) => child.name === "objects" && child.isDirectory());
+      } else if (git?.isFile()) {
+        const handle = await open(resolve(path, ".git"), "r");
+        try {
+          const prefix = Buffer.alloc(8);
+          const { bytesRead } = await handle.read(prefix, 0, prefix.length, 0);
+          repository = prefix.subarray(0, bytesRead).toString() === "gitdir: ";
+        } finally { await handle.close(); }
+      }
+      if (repository) {
+        hash.update(`${JSON.stringify(["directory", nameForRoot(path, root)])}\n`);
+        await walk(path);
+      } else {
+        await discover(path);
+      }
+    }
+  };
   const walk = async (directory: string): Promise<void> => {
     // Code-unit ordering does not depend on the host locale.
     const entries = (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
@@ -118,12 +148,16 @@ export async function workspaceDigest(workspace: string, statePath: string | nul
     };
     for (const entry of entries) {
       const path = resolve(directory, entry.name);
-      if (excluded(path, root, statePath)) {
+      if (exclusionCandidate(path, root, statePath)) {
         if (entry.isDirectory()) {
           const children = await readdir(path, { withFileTypes: true });
           if (entry.name === ".git" && children.some((child) => child.name === "HEAD" && child.isFile()) &&
             children.some((child) => child.name === "objects" && child.isDirectory())) continue;
-          if (nameForRoot(path, root) === ".pi-nf" && !children.some((child) => child.name === ".git" && (child.isFile() || child.isDirectory()))) continue;
+          if (nameForRoot(path, root) === ".pi-nf" && !children.some((child) => child.name === ".git" && (child.isFile() || child.isDirectory()))) {
+            await flush();
+            await discover(path);
+            continue;
+          }
         }
         if (entry.name === ".git" && entry.isFile()) {
           const handle = await open(path, "r");
@@ -149,7 +183,11 @@ export async function workspaceDigest(workspace: string, statePath: string | nul
           } finally { await handle.close(); }
         }
         if (!repo && ((entry.name === "node_modules" && file(".package-lock.json")) ||
-          ((entry.name === ".venv" || entry.name === "venv") && file("pyvenv.cfg")) || tagged)) continue;
+          ((entry.name === ".venv" || entry.name === "venv") && file("pyvenv.cfg")) || tagged)) {
+          await flush();
+          await discover(path);
+          continue;
+        }
       }
       const name = relative(root, path).split(sep).join("/");
       // JSON tuples frame type, path and payload unambiguously, even for delimiter-like names.

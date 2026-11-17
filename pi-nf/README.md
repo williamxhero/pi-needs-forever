@@ -141,10 +141,14 @@ output (unless it is itself a Git repository) and the explicit state database an
 its WAL/SHM files. Git metadata directories with `HEAD` and `objects`, and Git
 worktree `.git` files, are excluded. Installed `node_modules` with npm's hidden
 lockfile, virtual environments with `pyvenv.cfg`, and pytest, ruff or mypy caches
-with a valid `CACHEDIR.TAG` signature are excluded unless they contain a `.git`
-file or directory. Other similarly named directories and ordinary files are
-covered, including unknown `.coverage` files and unmarked caches. Consequently
-some generated writes may cause a conservative retry. Links are recorded, not
+with a valid `CACHEDIR.TAG` signature have their ordinary generated payload
+excluded. A metadata-only directory scan discovers independent Git repositories
+at any depth inside these locations and root `.pi-nf`; their project files remain
+covered using workspace-relative paths. This scan does not follow links and its
+cost grows with the number of directories, even when generated payload is not
+hashed. Other similarly named directories and ordinary files are covered,
+including unknown `.coverage` files and unmarked caches. Consequently some
+generated writes may cause a conservative retry. Links are recorded, not
 followed; read errors fail the scan. Protected files are checked independently,
 even inside excluded locations. Cache markers are contextual evidence, not a
 security boundary against a deliberately forged marker.
