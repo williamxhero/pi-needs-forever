@@ -110,6 +110,24 @@ test("CompletionGate detects changes in a repository deep inside a marked venv",
   } finally { rmSync(workspace, { recursive: true, force: true }); }
 });
 
+test("CompletionGate detects a repository beneath an ordinary .git directory in a marked venv", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pi-nf-deep-dotgit-"));
+  try {
+    // A direct .git child conservatively makes the venv itself a repository candidate.
+    const nested = join(workspace, "venv", "wrapper", ".git", "projects", "alpha");
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(join(workspace, "venv", "pyvenv.cfg"), "marker");
+    execFileSync("git", ["init", "--quiet", nested]);
+    writeFileSync(join(nested, "source.ts"), "before");
+    const task = contract(workspace, "require('node:fs').writeFileSync('venv/wrapper/.git/projects/alpha/source.ts', 'after')");
+    const result = await runCompletionGate({ task, baseline: [], state_path: null,
+      env: new NodeExecutionEnv({ cwd: workspace }), context: BACKGROUND_CONTEXT });
+    assert.equal(result.exit_code, 0);
+    assert.equal(result.workspace_changed, true);
+    assert.equal(result.passed, false);
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
 test("workspaceDigest discovers deep repositories in generated containers without hashing payload or following links", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "pi-nf-discovery-"));
   const outside = mkdtempSync(join(tmpdir(), "pi-nf-discovery-outside-"));
