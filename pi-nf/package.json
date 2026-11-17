@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "description": "Durable Needs Forever supervision on pi-durable",
-  "engines": { "node": ">=24" },
-  "bin": { "pi-nf": "dist/src/cli.js" },
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "pi-nf": "dist/src/cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test --test-concurrency=1 \"dist/test/*.test.js\"",
@@ -20,5 +24,15 @@
   "devDependencies": {
     "@types/node": "24.12.0",
     "typescript": "6.0.3"
-  }
+  },
+  "pi": {
+    "extensions": [
+      "./dist/src/extension.js"
+    ]
+  },
+  "keywords": [
+    "pi-package",
+    "needs-forever",
+    "pi-nf"
+  ]
 }

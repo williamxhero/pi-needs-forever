@@ -17,6 +17,7 @@ import {
   type DirectionData,
   type NfEventData,
 } from "./docs.js";
+import { redact } from "./redact.js";
 import type { Decision } from "./judge.js";
 import type {
   ControlPhase,
@@ -35,7 +36,7 @@ import type {
  * writes task state and is never read back by pi-nf.
  */
 export type NfAudit = {
-  schema_version: 1;
+  schema_version: 2;
   engine: "pi-nf";
   generated_at: string;
   task_id: string;
@@ -75,7 +76,48 @@ export type NfAudit = {
   };
   rounds: NfAuditRound[];
   events: NfAuditEvent[];
+  transcript: NfTranscript;
 };
+
+export type NfTranscriptKind =
+  | "user"
+  | "assistant"
+  | "thinking"
+  | "tool_call"
+  | "tool_result"
+  | "direction"
+  | "decision"
+  | "verification"
+  | "status";
+
+export type NfTranscriptItem = {
+  /** Stable committed entry ID (with a block suffix when one entry has several blocks). */
+  id: string;
+  at: string;
+  round_id: string | null;
+  kind: NfTranscriptKind;
+  text: string;
+  tool_name?: string;
+  tool_call_id?: string;
+  is_error?: boolean;
+  truncated?: boolean;
+};
+
+export type NfTranscript = {
+  items: NfTranscriptItem[];
+  window: {
+    limit: number;
+    oldest_id: string | null;
+    has_more: boolean;
+  };
+  stale_after_ms: number;
+};
+
+const TRANSCRIPT_LIMIT = 200;
+const TRANSCRIPT_TOTAL_BYTES = 64 * 1024;
+const TRANSCRIPT_ITEM_BYTES = 4 * 1024;
+const TRANSCRIPT_TOOL_BYTES = 2 * 1024;
+const TRANSCRIPT_STALE_AFTER_MS = 5_000;
 
 export type NfAuditEvent = NfEventData;
 
@@ -145,6 +187,220 @@ function roundFor(rounds: Map<string, NfAuditRound>, roundId: string, at: string
   return round;
 }
 
+function contentText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return "";
+  return value
+    .filter((part): part is { type: "text"; text: string } => {
+      return !!part && typeof part === "object" && (part as { type?: unknown }).type === "text" && typeof (part as { text?: unknown }).text === "string";
+    })
+    .map((part) => part.text)
+    .join("\n");
+}
+
+function boundedText(value: string, maxBytes: number): { text: string; truncated: boolean } {
+  const redacted = String(redact(value));
+  if (Buffer.byteLength(redacted, "utf8") <= maxBytes) return { text: redacted, truncated: false };
+  let end = Math.min(redacted.length, maxBytes);
+  while (end > 0 && Buffer.byteLength(redacted.slice(0, end), "utf8") > maxBytes) end -= 1;
+  return { text: `${redacted.slice(0, end)}\n[truncated]`, truncated: true };
+}
+
+function messageAt(message: { timestamp?: unknown }): string {
+  const timestamp = message.timestamp;
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp <= 0) {
+    return new Date(0).toISOString();
+  }
+  // Pi messages use milliseconds. Be tolerant of a seconds-based fixture.
+  return new Date(timestamp < 100_000_000_000 ? timestamp * 1000 : timestamp).toISOString();
+}
+
+function eventAt(value: unknown): string {
+  const at = stringValue(value);
+  return at ?? new Date(0).toISOString();
+}
+
+function transcriptItem(input: {
+  id: string;
+  at: string;
+  roundId?: string | null;
+  kind: NfTranscriptKind;
+  text: string;
+  maxBytes: number;
+  toolName?: string;
+  toolCallId?: string;
+  isError?: boolean;
+}): NfTranscriptItem {
+  const bounded = boundedText(input.text, input.maxBytes);
+  return {
+    id: input.id,
+    at: input.at,
+    round_id: input.roundId ?? null,
+    kind: input.kind,
+    text: bounded.text,
+    ...(input.toolName ? { tool_name: input.toolName } : {}),
+    ...(input.toolCallId ? { tool_call_id: input.toolCallId } : {}),
+    ...(input.isError ? { is_error: true } : {}),
+    ...(bounded.truncated ? { truncated: true } : {}),
+  };
+}
+
+function buildTranscript(entries: readonly EntryRecord[], includeThinking: boolean, limit = TRANSCRIPT_LIMIT): NfTranscript {
+  const items: NfTranscriptItem[] = [];
+  for (const entry of entries) {
+    if (NfDirection.is(entry)) {
+      const direction = entry.data;
+      const decision = asRecord(direction.decision);
+      const action = stringValue(decision?.action);
+      const reason = stringValue(decision?.reason);
+      const next = stringValue(decision?.next_message) ?? "";
+      items.push(transcriptItem({
+        id: `${String(entry.id)}:direction`,
+        at: eventAt(direction.created_at),
+        roundId: direction.round_id,
+        kind: "direction",
+        text: [action, reason, next].filter((part): part is string => Boolean(part)).join("\n"),
+        maxBytes: TRANSCRIPT_ITEM_BYTES,
+      }));
+      continue;
+    }
+    if (NfEvent.is(entry)) {
+      const event = entry.data;
+      const details = asRecord(event.details);
+      const roundId = stringValue(details?.round_id);
+      if (event.type === "nf.decision") {
+        const decision = asRecord(details?.decision);
+        const action = stringValue(decision?.action) ?? "decision";
+        const reason = stringValue(decision?.reason) ?? "";
+        items.push(transcriptItem({
+          id: `${String(entry.id)}:decision`,
+          at: eventAt(event.at),
+          roundId,
+          kind: "decision",
+          text: `${action}${reason ? `: ${reason}` : ""}`,
+          maxBytes: TRANSCRIPT_ITEM_BYTES,
+        }));
+      } else if (event.type === "nf.verification" || event.type === "nf.verification_failed") {
+        const passed = event.type === "nf.verification" && details?.passed === true;
+        items.push(transcriptItem({
+          id: `${String(entry.id)}:verification`,
+          at: eventAt(event.at),
+          roundId,
+          kind: "verification",
+          text: passed ? "verification passed" : "verification failed",
+          maxBytes: TRANSCRIPT_ITEM_BYTES,
+        }));
+      } else if (
+        event.type === "nf.start"
+        || event.type === "nf.pause"
+        || event.type === "nf.resume"
+        || event.type === "nf.limit_reached"
+        || event.type === "nf.interrupted"
+        || event.type === "nf.judge_retry"
+        || event.type === "nf.judge_rejected"
+        || event.type === "nf.judge_interrupted"
+        || event.type === "nf.snapshot_failed"
+        || event.type === "nf.verification_interrupted"
+        || event.type === "nf.verification_missing_baseline"
+      ) {
+        items.push(transcriptItem({
+          id: `${String(entry.id)}:status`,
+          at: eventAt(event.at),
+          roundId,
+          kind: "status",
+          text: event.type.replaceAll("_", " "),
+          maxBytes: TRANSCRIPT_ITEM_BYTES,
+        }));
+      }
+      continue;
+    }
+
+    const message = entry.model?.[0];
+    if (!message) continue;
+    if (message.role === "assistant") {
+      message.content.forEach((block, index) => {
+        if (block.type === "text") {
+          const text = block.text.trim();
+          if (!text) return;
+          items.push(transcriptItem({
+            id: `${String(entry.id)}:text:${index}`,
+            at: messageAt(message),
+            kind: "assistant",
+            text,
+            maxBytes: TRANSCRIPT_ITEM_BYTES,
+          }));
+        } else if (block.type === "thinking" && includeThinking && !block.redacted) {
+          const text = block.thinking.trim();
+          if (!text) return;
+          items.push(transcriptItem({
+            id: `${String(entry.id)}:thinking:${index}`,
+            at: messageAt(message),
+            kind: "thinking",
+            text,
+            maxBytes: TRANSCRIPT_ITEM_BYTES,
+          }));
+        } else if (block.type === "toolCall") {
+          items.push(transcriptItem({
+            id: `${String(entry.id)}:tool:${block.id || index}`,
+            at: messageAt(message),
+            kind: "tool_call",
+            text: JSON.stringify(block.arguments ?? {}),
+            toolName: block.name,
+            toolCallId: block.id,
+            maxBytes: TRANSCRIPT_ITEM_BYTES,
+          }));
+        }
+      });
+      continue;
+    }
+    if (message.role === "toolResult") {
+      items.push(transcriptItem({
+        id: `${String(entry.id)}:tool_result`,
+        at: messageAt(message),
+        kind: "tool_result",
+        text: contentText(message.content),
+        toolName: message.toolName,
+        toolCallId: message.toolCallId,
+        isError: message.isError,
+        maxBytes: TRANSCRIPT_TOOL_BYTES,
+      }));
+      continue;
+    }
+    if (message.role === "user") {
+      const text = contentText(message.content).trim();
+      if (text) {
+        items.push(transcriptItem({
+          id: `${String(entry.id)}:user`,
+          at: messageAt(message),
+          kind: "user",
+          text,
+          maxBytes: TRANSCRIPT_ITEM_BYTES,
+        }));
+      }
+    }
+  }
+
+  const selected: NfTranscriptItem[] = [];
+  let total = 0;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (selected.length >= limit) break;
+    const item = items[index]!;
+    const size = Buffer.byteLength(JSON.stringify(item), "utf8");
+    if (total + size > TRANSCRIPT_TOTAL_BYTES) break;
+    selected.unshift(item);
+    total += size;
+  }
+  return {
+    items: selected,
+    window: {
+      limit,
+      oldest_id: selected[0]?.id ?? null,
+      has_more: selected.length < items.length,
+    },
+    stale_after_ms: TRANSCRIPT_STALE_AFTER_MS,
+  };
+}
+
 async function readEntries(harness: Harness, context: Context): Promise<EntryRecord[]> {
   const conversation = await harness.conversation(ROOT_CONVERSATION_ID, context);
   if (!conversation) return [];
@@ -158,7 +414,18 @@ async function readEntries(harness: Harness, context: Context): Promise<EntryRec
   return entries;
 }
 
-export async function readAudit(dbPath: string, context: Context = BACKGROUND_CONTEXT): Promise<NfAudit> {
+export type AuditReadOptions = {
+  /** Include model thinking in the display projection. Defaults to true; it is still redacted and bounded. */
+  includeThinking?: boolean;
+  /** Test/display override for the newest window; production uses 200. */
+  transcriptLimit?: number;
+};
+
+export async function readAudit(
+  dbPath: string,
+  context: Context = BACKGROUND_CONTEXT,
+  options: AuditReadOptions = {},
+): Promise<NfAudit> {
   if (!existsSync(dbPath)) throw new Error(`pi-nf database does not exist: ${dbPath}`);
   const storage = await openNodeSqliteStorage(dbPath);
   const harness = await Harness.open(
@@ -328,7 +595,7 @@ export async function readAudit(dbPath: string, context: Context = BACKGROUND_CO
     const ledger = routeDoc?.ledger ?? [];
 
     return {
-      schema_version: 1,
+      schema_version: 2,
       engine: "pi-nf",
       generated_at: new Date().toISOString(),
       task_id: contract.task.task_id,
@@ -374,6 +641,11 @@ export async function readAudit(dbPath: string, context: Context = BACKGROUND_CO
       },
       rounds: ordered,
       events,
+      transcript: buildTranscript(
+        entries,
+        options.includeThinking !== false,
+        Number.isInteger(options.transcriptLimit) && options.transcriptLimit! > 0 ? options.transcriptLimit! : TRANSCRIPT_LIMIT,
+      ),
     };
   } finally {
     await harness.close(context);
@@ -390,6 +662,8 @@ export type WriteAuditOptions = {
   /** Override the default `<workspace>/.pi-nf` projection root. */
   root?: string;
   context?: Context;
+  /** Include model thinking in the display projection. Defaults to true. */
+  includeThinking?: boolean;
 };
 
 /**
@@ -398,7 +672,7 @@ export type WriteAuditOptions = {
  */
 export async function writeAudit(dbPath: string, options: WriteAuditOptions = {}): Promise<{ path: string; audit: NfAudit }> {
   const context = options.context ?? BACKGROUND_CONTEXT;
-  const audit = await readAudit(dbPath, context);
+  const audit = await readAudit(dbPath, context, { includeThinking: options.includeThinking });
   const directory = options.root
     ? resolve(options.root, audit.task_id)
     : auditDirectory(audit.contract.workspace, audit.task_id);

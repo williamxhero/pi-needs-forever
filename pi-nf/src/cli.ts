@@ -4,6 +4,8 @@ import { writeAudit } from "./audit.js";
 import { Host } from "./host.js";
 import { startWebServer } from "./web.js";
 import { createDefaultModels, resolveModelRef } from "./models.js";
+import { createNeedsForever } from "./needs-forever.js";
+import { formatPreview, formatReceipt, formatReceiptList, formatStartResult } from "./needs-forever-command.js";
 import type { SupervisionStatus } from "./types.js";
 
 function printStatus(status: SupervisionStatus): void {
@@ -32,9 +34,12 @@ Usage:
   pi-nf pause --db <state.sqlite> [--json]
   pi-nf resume --db <state.sqlite> [--model provider/model] [--json]
   pi-nf web --db <state.sqlite> [--port 8787]
-  pi-nf audit --db <state.sqlite> [--out <directory>] [--json]
+  pi-nf audit --db <state.sqlite> [--out <directory>] [--no-thinking] [--json]
+  pi-nf needs --issue <number> [--repo owner/name] [--cwd path] [--dry-run] [--yes] [--contract path] [--restart] [--json]
+  pi-nf needs status [--issue <number>] [--repo owner/name] [--cwd path] [--json]
+  pi-nf recover --db <state.sqlite> [--model provider/model] [--json]
 
-start/send/pause/resume also refresh the read-only NFG projection under
+start/send/pause/resume/recover also refresh the read-only NFG projection under
 <workspace>/.pi-nf/<task_id>/audit.json unless --no-nfg is set.
 `);
 }
@@ -87,6 +92,15 @@ async function main(argv: string[]): Promise<number> {
       port: { type: "string" },
       out: { type: "string" },
       "no-nfg": { type: "boolean" },
+      "no-thinking": { type: "boolean" },
+      issue: { type: "string" },
+      repo: { type: "string" },
+      cwd: { type: "string" },
+      contract: { type: "string" },
+      workspace: { type: "string" },
+      yes: { type: "boolean" },
+      restart: { type: "boolean" },
+      "dry-run": { type: "boolean" },
       json: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -105,9 +119,68 @@ async function main(argv: string[]): Promise<number> {
   }
   if (command === "audit") {
     if (!values.db) throw new Error("audit requires --db <state.sqlite>");
-    const result = await writeAudit(values.db, values.out ? { root: values.out } : {});
+    const result = await writeAudit(values.db, {
+      ...(values.out ? { root: values.out } : {}),
+      ...(values["no-thinking"] ? { includeThinking: false } : {}),
+    });
     if (values.json) console.log(JSON.stringify(result.audit, null, 2));
     else console.log(`wrote ${result.path}`);
+    return 0;
+  }
+  if (command === "needs") {
+    if (!values.issue && positionals[1] !== "status") throw new Error("needs requires --issue <number>");
+    const issue = values.issue ? Number(values.issue) : 0;
+    if (values.issue && (!Number.isInteger(issue) || issue <= 0)) throw new Error("--issue must be a positive integer");
+    const needs = createNeedsForever(values.cwd ? { cwd: values.cwd } : {});
+    const request = {
+      repo: values.repo ?? "",
+      issue,
+      ...(values.workspace ? { workspace: values.workspace } : {}),
+      ...(values.contract ? { contractPath: values.contract } : {}),
+      ...(values.yes ? { yes: true } : {}),
+      ...(values.restart ? { restart: true } : {}),
+    };
+    const wantsStatus = positionals[1] === "status";
+    if (wantsStatus) {
+      if (!issue) {
+        const receipts = await needs.list();
+        if (values.json) console.log(JSON.stringify(receipts, null, 2));
+        else console.log(formatReceiptList(receipts));
+        return 0;
+      }
+      const receipt = await needs.inspect(request);
+      if (values.json) console.log(JSON.stringify(receipt, null, 2));
+      else console.log(receipt ? formatReceipt(receipt) : `No handoff receipt for #${issue}.`);
+      return 0;
+    }
+    if (values["dry-run"] || (!values.yes && !values.contract && !values.restart)) {
+      const preview = await needs.preview(request);
+      if (values.json) console.log(JSON.stringify(preview, null, 2));
+      else console.log(formatPreview(preview));
+      return preview.gaps.length > 0 ? 1 : 0;
+    }
+    const result = await needs.start(request);
+    if (values.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(formatStartResult(result));
+    return result.kind === "rejected" || result.kind === "conflict" ? 1 : 0;
+  }
+  if (command === "recover") {
+    if (!values.db) throw new Error("recover requires --db <state.sqlite>");
+    const db = values.db;
+    const models = createDefaultModels();
+    const model = resolveModelRef(values.model);
+    const host = await Host.openExisting(db, { models, model });
+    try {
+      host.harness.resume();
+      await withNfgProjection(db, { disabled: values["no-nfg"], out: values.out }, async () => {
+        await host.waitForIdle();
+        const status = await host.inspect();
+        if (values.json) console.log(JSON.stringify(status, null, 2));
+        else printStatus(status);
+      });
+    } finally {
+      await host.close();
+    }
     return 0;
   }
   if (command === "web") {

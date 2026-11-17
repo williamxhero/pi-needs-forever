@@ -1,0 +1,17 @@
+{
+  "workspace": ".",
+  "authorization": "Only modify this workspace; do not deploy, publish, or access secrets.",
+  "task_id_prefix": "issue",
+  "c2": { "mode": "enforce" },
+  "verify": {
+    "argv": ["node", "verify.mjs"],
+    "timeout_seconds": 120,
+    "protected_files": ["verify.mjs"]
+  },
+  "limits": {
+    "max_worker_turns": 20,
+    "max_minutes": 120,
+    "max_tokens": null,
+    "max_cost": null
+  }
+}
