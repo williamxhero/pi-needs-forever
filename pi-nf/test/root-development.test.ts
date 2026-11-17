@@ -124,8 +124,9 @@ test("a fresh root Host acquires root and more-specific instructions before edit
     models: scriptedModels([
       (context) => {
         prompts.push(systemText(context));
-        return tool("bash", { command: cwdCommand });
+        return tool("read", { path: "AGENTS.md" });
       },
+      tool("bash", { command: cwdCommand }),
       ...editSteps(beforeEdit),
       fauxAssistantMessage("Both projects updated; awaiting independent verification."),
     ]),
