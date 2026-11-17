@@ -1,5 +1,5 @@
 // Reproducible synthetic benchmark; only the child scan is timed/measured.
-// node dist/test/fixtures/digest-benchmark.js [MiB=256] [small-files=128] [runs=1]
+// node dist/test/fixtures/digest-benchmark.js [MiB-per-file=256] [small-files=128] [runs=1] [large-files=1]
 import { spawnSync } from "node:child_process";
 import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,16 +27,19 @@ if (process.argv[2] === "--scan") {
   const mib = Number(process.argv[2] ?? 256);
   const smallFiles = Number(process.argv[3] ?? 128);
   const runs = Number(process.argv[4] ?? 1);
+  const largeFiles = Number(process.argv[5] ?? 1);
   const workspace = mkdtempSync(join(tmpdir(), "pi-nf-digest-bench-"));
   try {
     const nested = join(workspace, "projects", "large");
     mkdirSync(nested, { recursive: true });
-    const fd = openSync(join(nested, "dataset.bin"), "w");
-    try {
-      const chunk = Buffer.alloc(1024 * 1024, 0x61);
-      for (let i = 0; i < mib; i++) writeSync(fd, chunk);
-    } finally {
-      closeSync(fd);
+    const chunk = Buffer.alloc(1024 * 1024, 0x61);
+    for (let file = 0; file < largeFiles; file++) {
+      const fd = openSync(join(nested, file === 0 ? "dataset.bin" : `dataset-${file}.bin`), "w");
+      try {
+        for (let i = 0; i < mib; i++) writeSync(fd, chunk);
+      } finally {
+        closeSync(fd);
+      }
     }
     for (let i = 0; i < smallFiles; i++) writeFileSync(join(nested, `source-${i}.ts`), "x".repeat(1024));
     for (let run = 0; run < runs; run++) {
@@ -44,7 +47,7 @@ if (process.argv[2] === "--scan") {
         encoding: "utf8", timeout: 60_000,
       });
       if (result.status !== 0) throw new Error(`scan failed: ${result.error ?? result.stderr}`);
-      console.log(JSON.stringify({ mib, small_files: smallFiles, small_file_bytes: 1024, run: run + 1, ...JSON.parse(result.stdout) }));
+      console.log(JSON.stringify({ mib, large_files: largeFiles, small_files: smallFiles, small_file_bytes: 1024, run: run + 1, ...JSON.parse(result.stdout) }));
     }
   } finally {
     rmSync(workspace, { recursive: true, force: true });

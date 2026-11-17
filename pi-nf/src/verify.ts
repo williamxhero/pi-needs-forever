@@ -116,26 +116,43 @@ export async function workspaceDigest(workspace: string, statePath: string | nul
   const walk = async (directory: string): Promise<void> => {
     // Code-unit ordering does not depend on the host locale.
     const entries = (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    // At most eight file streams globally: drain this batch before descending.
+    // Keep just fixed-size content hashes, never whole files, until ordered commit.
+    const pending: { path: string; name: string }[] = [];
+    const flush = async (): Promise<void> => {
+      const results = await Promise.allSettled(pending.map(async ({ path, name }) => {
+        const content = createHash("sha256");
+        for await (const chunk of createReadStream(path)) content.update(chunk);
+        return `${JSON.stringify(["file", name, content.digest("hex")])}\n`;
+      }));
+      // allSettled drains every stream even on failure, without an unhandled rejection
+      // or returning while sibling reads are still active. Never commit a partial batch.
+      for (const result of results) if (result.status === "rejected") throw result.reason;
+      for (const result of results) if (result.status === "fulfilled") hash.update(result.value);
+      pending.length = 0;
+    };
     for (const entry of entries) {
       const path = resolve(directory, entry.name);
       if (excluded(path, root, statePath)) continue;
       const name = relative(root, path).split(sep).join("/");
       // JSON tuples frame type, path and payload unambiguously, even for delimiter-like names.
       // Hash file bytes separately so stream chunk boundaries never enter the framing.
-      if (entry.isSymbolicLink()) {
-        hash.update(`${JSON.stringify(["link", name, await readlink(path)])}\n`);
-      } else if (entry.isDirectory()) {
-        hash.update(`${JSON.stringify(["directory", name])}\n`);
-        await walk(path);
-      } else if (entry.isFile()) {
-        const content = createHash("sha256");
-        // Sequential streams bound both file buffers and open handles, independent of file size.
-        for await (const chunk of createReadStream(path)) content.update(chunk);
-        hash.update(`${JSON.stringify(["file", name, content.digest("hex")])}\n`);
+      if (entry.isFile()) {
+        pending.push({ path, name });
+        if (pending.length === 8) await flush();
       } else {
-        throw new Error(`Cannot digest unsupported filesystem entry: ${path}`);
+        await flush();
+        if (entry.isSymbolicLink()) {
+          hash.update(`${JSON.stringify(["link", name, await readlink(path)])}\n`);
+        } else if (entry.isDirectory()) {
+          hash.update(`${JSON.stringify(["directory", name])}\n`);
+          await walk(path);
+        } else {
+          throw new Error(`Cannot digest unsupported filesystem entry: ${path}`);
+        }
       }
     }
+    await flush();
   };
   await walk(root);
   return hash.digest("hex");
